@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mla"
+version = "0.1.0"
+description = "MLA: For the love of simulating intelligence."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name="ML Artiste", email="mlartiste101@gmail.com" }
+]
+dependencies = [
+  "torch",
+  "torchmetrics",
+  "matplotlib",
+  "tqdm"
+]
+
+[project.urls]
+Homepage = "https://github.com/MLArtiste/mla"
+
