@@ -153,7 +153,7 @@ class BaseNNTrainer(ABC):
             torch.save(model_to_save.state_dict(), self._model_save_path)
         
     @abstractmethod
-    def _forward_step(self, batch_data: tuple(Tensor, Tensor) -> tuple(Tensor, Tensor):
+    def _forward_step(self, batch_data: tuple(Tensor, Tensor)) -> tuple(Tensor, Tensor):
         """
         Forward pass for a single batch. Should move data to device and 
         return (y_pred, y) for loss computation.
