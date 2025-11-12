@@ -12,6 +12,9 @@ from torch.optim.lr_scheduler import LRScheduler
 
 
 class BaseNNTrainer(ABC):
+    """
+    Abstract base class for training neural networks with PyTorch.
+    """
     
     def __init__(
         self, 
@@ -26,6 +29,22 @@ class BaseNNTrainer(ABC):
         use_amp: bool = True,
         grad_clip_val: float | None = None
     ):
+        """
+        Initialize the Trainer with model, optimizer, loss function, 
+        metrics, scheduler, and other training options.
+
+        Args:
+            model (nn.Module): Neural network model to train.
+            optimizer (Optimizer): Optimization algorithm for parameter updates.
+            loss_fn (nn.Module): Loss function to minimize during training.
+            metrics (dict[str, Metric] | None): Optional dictionary of metrics to track.
+            scheduler (LRScheduler | None): Optional learning rate scheduler.
+            lrs_metric (str | None): Metric name to monitor for ReduceLROnPlateau.
+            device (torch.device | str | None): Device to use ('cpu', 'cuda', etc.).
+            model_save_path (str | None): File path to save the best model.
+            use_amp (bool): Whether to use automatic mixed precision.
+            grad_clip_val (float | None): Maximum gradient norm for clipping.
+        """
         
         self._device = device if device else torch.accelerator.current_accelerator().type\
                       if torch.accelerator.is_available() else "cpu"
@@ -56,17 +75,40 @@ class BaseNNTrainer(ABC):
                 self._history[f"val_{metric_name}"] = []
 
     def _update_metrics(self, y_pred: Tensor, y: Tensor) -> None:
+        """
+        Update metric values using model predictions and ground truths.
+
+        Args:
+            y_pred (Tensor): Model predictions.
+            y (Tensor): Ground truth labels.
+        """
         for metric in self._metrics.values():
             metric.update(y_pred, y)
 
     def _compute_metrics(self) -> dict[str, float]:
+        """
+        Compute and return the current values of all metrics.
+
+        Returns:
+            dict[str, float]: Mapping of metric names to their computed values.
+        """
         return {name: metric.compute().item() for name, metric in self._metrics.items()}
         
     def _reset_metrics(self) -> None:
+        """
+        Reset all metric states to begin new accumulation for the next epoch.
+        """
         for metric in self._metrics.values():
             metric.reset()
 
-    def _scheduler_step(self, metric_value: float | None = None) -> None:            
+    def _scheduler_step(self, metric_value: float | None = None) -> None:
+        """
+        Step the learning rate scheduler.
+        Use a monitored metric for ReduceLROnPlateau.
+
+        Args:
+            metric_value (float | None): Metric value used for ReduceLROnPlateau.
+        """
         if isinstance(self._scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
             if metric_value is None:
                 raise ValueError("A metric must be provided for ReduceLROnPlateau.")
@@ -75,7 +117,9 @@ class BaseNNTrainer(ABC):
             self._scheduler.step()
 
     def _cleanup_memory(self) -> None:
-        """Releases Accelerator memory cache (if present) and forces a garbage collection."""
+        """
+        Clear device memory cache and trigger garbage collection to free resources.
+        """
         if self._device == 'cuda':
             torch.cuda.empty_cache()
         elif self._device == 'mps':
@@ -88,6 +132,14 @@ class BaseNNTrainer(ABC):
         metric_cur_val: float, 
         minimize_metric: bool
     ):
+        """
+        Save model checkpoint if current metric improves upon the best recorded value.
+    
+        Args:
+            metric (str): Metric name to monitor.
+            metric_cur_val (float): Current metric value.
+            minimize_metric (bool): Whether to minimize (True) or maximize (False) the metric.
+        """
         metric = f"val_{metric}"
         if minimize_metric:
             metric_best_val = min(self._history[metric]) if len(self._history[metric]) else float("inf")
@@ -101,13 +153,34 @@ class BaseNNTrainer(ABC):
             torch.save(model_to_save.state_dict(), self._model_save_path)
         
     @abstractmethod
-    def _forward_step(self, batch_data: object) -> object:
-        """Moves data to device and returns input to loss function."""
+    def _forward_step(self, batch_data: tuple(Tensor, Tensor) -> tuple(Tensor, Tensor):
+        """
+        Forward pass for a single batch. Should move data to device and 
+        return (y_pred, y) for loss computation.
+    
+        Args:
+            batch_data tuple(Tensor, Tensor): A batch from the dataloader.
+    
+        Returns:
+            tuple(Tensor, Tensor): Model predictions and corresponding targets.
+        """
 
     def get_history(self) -> dict[str, list[float]]:
+        """
+        Retrieve the training and validation history of losses and metrics.
+    
+        Returns:
+            dict[str, list[float]]: Recorded loss and metric values per epoch.
+        """
         return self._history
     
     def _train_loop(self, train_dataloader: DataLoader) -> None:
+        """
+        Perform one training epoch, updating model parameters and metrics.
+    
+        Args:
+            train_dataloader (DataLoader): Dataloader for the training set.
+        """
         self._model.train()
         total_loss = 0
         num_batches = len(train_dataloader)
@@ -151,6 +224,15 @@ class BaseNNTrainer(ABC):
         save_on_metric: str,
         minimize_metric: bool
     ) -> None:
+        """
+        Perform one validation epoch, compute metrics, and optionally save the best model.
+    
+        Args:
+            val_dataloader (DataLoader): Dataloader for the validation set.
+            save_on_metric (str): Metric name used to determine best model.
+            minimize_metric (bool): Whether to minimize (True) or maximize (False) the metric.
+        """
+
         self._model.eval()
         total_loss = 0
         num_batches = len(val_dataloader)
@@ -197,7 +279,16 @@ class BaseNNTrainer(ABC):
         save_on_metric: str | None = None,
         minimize_metric: bool =True
     ) -> None:
-        
+        """
+        Train the model for a specified number of epochs with optional validation.
+    
+        Args:
+            train_dataloader (DataLoader): Training dataset loader.
+            val_dataloader (DataLoader | None): Optional validation dataset loader.
+            epochs (int): Number of epochs to train for.
+            save_on_metric (str | None): Metric name to save best model on (or loss).
+            minimize_metric (bool): Whether to minimize or maximize the save metric.
+        """
         for epoch in range(epochs):
             print(f"Epoch {epoch + 1}/{epochs}\n{'-' * 40}")
             start = time.time()
@@ -218,7 +309,10 @@ class BaseNNTrainer(ABC):
 
     def plot(self, figsize: tuple[float, float] = (6, 4)) -> None:
         """
-        Plot one graph per metric showing train vs validation curves.
+        Plot training and validation curves for loss and all tracked metrics.
+    
+        Args:
+            figsize (tuple[float, float]): Figure size for the plots.
         """
         
         metrics_to_plot = ["loss"] + sorted(self._metrics.keys())
@@ -245,4 +339,3 @@ class BaseNNTrainer(ABC):
             plt.legend()
             plt.tight_layout()
             plt.show()
-
