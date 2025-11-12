@@ -46,13 +46,13 @@ class BaseNNTrainer(ABC):
             grad_clip_val (float | None): Maximum gradient norm for clipping.
         """
         
-        self._device = device if device else torch.accelerator.current_accelerator().type\
+        self.device = device if device else torch.accelerator.current_accelerator().type\
                       if torch.accelerator.is_available() else "cpu"
     
-        if isinstance(self._device, str):
-            self._device = torch.device(self._device)
+        if isinstance(self.device, str):
+            self.device = torch.device(self.device)
         
-        model = model.to(self._device)
+        model = model.to(self.device)
         if torch.accelerator.device_count() > 1:
             model = torch.nn.DataParallel(model)
 
@@ -65,7 +65,7 @@ class BaseNNTrainer(ABC):
         self._model_save_path = model_save_path
         self._grad_clip_val = grad_clip_val
         self._history = {"train_loss": [], "val_loss": []}
-        self._scaler = torch.amp.GradScaler(self._device.type, enabled=self._use_amp)
+        self._scaler = torch.amp.GradScaler(self.device.type, enabled=self._use_amp)
         self._metrics = {name.lower(): metric for name, metric in (metrics or {}).items()}
         
 
@@ -73,17 +73,25 @@ class BaseNNTrainer(ABC):
             for metric_name in self._metrics:
                 self._history[f"train_{metric_name}"] = []
                 self._history[f"val_{metric_name}"] = []
-
-    def _update_metrics(self, y_pred: Tensor, y: Tensor) -> None:
+        self._move_metrics_to_device()
+        
+    def _move_metrics_to_device(self) -> None:
+        """
+        Move all metric objects to the same device as the model.
+        """
+        for metric in self._metrics.values():
+            metric.to(self.device)
+    
+    @torch.no_grad()
+    def _update_metrics(self, *args: object) -> None:
         """
         Update metric values using model predictions and ground truths.
 
         Args:
-            y_pred (Tensor): Model predictions.
-            y (Tensor): Ground truth labels.
+            *args (object): Values returned from _forward_step. 
         """
         for metric in self._metrics.values():
-            metric.update(y_pred, y)
+            metric.update(*args)
 
     def _compute_metrics(self) -> dict[str, float]:
         """
@@ -120,9 +128,9 @@ class BaseNNTrainer(ABC):
         """
         Clear device memory cache and trigger garbage collection to free resources.
         """
-        if self._device == 'cuda':
+        if self.device == 'cuda':
             torch.cuda.empty_cache()
-        elif self._device == 'mps':
+        elif self.device == 'mps':
             torch.mps.empty_cache()
         gc.collect()
 
@@ -153,16 +161,16 @@ class BaseNNTrainer(ABC):
             torch.save(model_to_save.state_dict(), self._model_save_path)
         
     @abstractmethod
-    def _forward_step(self, batch_data: tuple(Tensor, Tensor)) -> tuple(Tensor, Tensor):
+    def _forward_step(self, batch_data: object) -> object:
         """
-        Forward pass for a single batch. Should move data to device and 
-        return (y_pred, y) for loss computation.
+        Forward pass for a single batch. Should move data to self.device and 
+        return object (typically (y_pred, y)) for loss computation.
     
         Args:
-            batch_data tuple(Tensor, Tensor): A batch from the dataloader.
+            batch_data (object): A batch from the dataloader.
     
         Returns:
-            tuple(Tensor, Tensor): Model predictions and corresponding targets.
+            object: Input to loss function and metrics. Typically model predictions and corresponding targets (y_pred, y).
         """
 
     def get_history(self) -> dict[str, list[float]]:
@@ -187,9 +195,9 @@ class BaseNNTrainer(ABC):
         pbar = tqdm(train_dataloader, total=num_batches)
 
         for batch_idx, batch_data in enumerate(pbar):
-            with torch.autocast(self._device.type, enabled=self._use_amp):
-                y_pred, y = self._forward_step(batch_data)
-                batch_loss = self._loss_fn(y_pred, y)
+            with torch.autocast(self.device.type, enabled=self._use_amp):
+                batch_output = self._forward_step(batch_data)
+                batch_loss = self._loss_fn(*batch_output)
             
             # Backward pass
             self._scaler.scale(batch_loss).backward()
@@ -202,15 +210,15 @@ class BaseNNTrainer(ABC):
 
             # Accumulate loss and metrics
             total_loss += batch_loss.item()
-            avg_loss = total_loss / (batch_idx+ 1)
-            self._update_metrics(y_pred.detach(), y)
+            avg_loss = total_loss / (batch_idx + 1)
+            self._update_metrics(*batch_output)
             
             # compute metrics
             current_metrics = self._compute_metrics()
             
             # Display intermediate results
             metric_repr = "| ".join([f"train_{name}: {value:.4f}" for name, value in current_metrics.items()])
-            pbar.set_description(f"Train Loss: {avg_loss:.4f}| {metric_repr}")
+            pbar.set_description(f"Loss: {avg_loss:.4f}| {metric_repr}")
 
         self._history["train_loss"].append(avg_loss)
         for name, value in current_metrics.items():
@@ -241,13 +249,13 @@ class BaseNNTrainer(ABC):
         with torch.no_grad():
             for batch_idx, batch_data in enumerate(pbar):
                 pbar.set_description("Validating")
-                y_pred, y = self._forward_step(batch_data)
-                total_loss += self._loss_fn(y_pred, y).item()
-                self._update_metrics(y_pred, y)
+                batch_output = self._forward_step(batch_data)
+                total_loss += self._loss_fn(*batch_output).item()
+                self._update_metrics(*batch_output)
 
         avg_loss = total_loss / num_batches
         
-        if self._model_save_path and save_on_metric:
+        if self._model_save_path:
             save_on_metric = save_on_metric.lower()
             if save_on_metric == 'loss':
                 metric_cur_val = avg_loss
@@ -276,7 +284,7 @@ class BaseNNTrainer(ABC):
         train_dataloader: DataLoader, 
         val_dataloader: DataLoader | None = None, 
         epochs: int = 10,
-        save_on_metric: str | None = None,
+        save_on_metric: str = 'loss',
         minimize_metric: bool =True
     ) -> None:
         """
@@ -286,7 +294,7 @@ class BaseNNTrainer(ABC):
             train_dataloader (DataLoader): Training dataset loader.
             val_dataloader (DataLoader | None): Optional validation dataset loader.
             epochs (int): Number of epochs to train for.
-            save_on_metric (str | None): Metric name to save best model on (or loss).
+            save_on_metric (str): Metric name to save best model on.
             minimize_metric (bool): Whether to minimize or maximize the save metric.
         """
         for epoch in range(epochs):

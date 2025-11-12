@@ -1,9 +1,9 @@
-# MLA
+# mlalib
 
-**MLA** is a python library built by **MLA** - for **MLA** and all **MLA wannabes**.
+A lightweight library built by MLA for exploring and understanding machine learning.
 
 ## Installation
 
 ```bash
-pip install mla
+pip install mlalib
 

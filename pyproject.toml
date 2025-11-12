@@ -3,14 +3,14 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mla"
+name = "mlalib"
 version = "0.1.0"
-description = "MLA: For the love of simulating intelligence."
+description = "For the love of simulating intelligence."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-  { name="ML Artiste", email="mlartiste101@gmail.com" }
+  { name="MLA", email="mlartiste@proton.me" }
 ]
 dependencies = [
   "torch",
@@ -18,7 +18,4 @@ dependencies = [
   "matplotlib",
   "tqdm"
 ]
-
-[project.urls]
-Homepage = "https://github.com/MLArtiste/mla"
 
