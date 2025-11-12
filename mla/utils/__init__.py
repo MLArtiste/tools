@@ -1,3 +1,3 @@
-from .base_trainer import BaseNNTrainer
+from .base_nn_trainer import BaseNNTrainer
 
 __all__ = ["BaseNNTrainer"]
