@@ -1,5 +1,6 @@
 """
-For the love of simulating intelligence.
+For the love of exploring intelligence.
 """
-__version__ = "0.1.0"
+
+__version__ = "0.4.4"
 __author__ = "MLA"

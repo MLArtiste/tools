@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlalib"
-version = "0.1.0"
-description = "For the love of simulating intelligence."
+version = "0.4.4"
+description = "For the love of exploring intelligence."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -13,9 +13,13 @@ authors = [
   { name="MLA", email="mlartiste@proton.me" }
 ]
 dependencies = [
-  "torch",
-  "torchmetrics",
+  "numpy",
+  "pandas",
   "matplotlib",
-  "tqdm"
+  "tqdm",
+  "requests",
+  "torch",
+  "torchmetrics"
+  
 ]
 
