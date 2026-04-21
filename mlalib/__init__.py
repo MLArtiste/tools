@@ -2,5 +2,9 @@
 For the love of exploring intelligence.
 """
 
-__version__ = "0.5.0"
+from . import utils, tabular, text
+
+__version__ = "0.6.0"
 __author__ = "MLA"
+
+__all__ = ["tabular", "utils", "text"]

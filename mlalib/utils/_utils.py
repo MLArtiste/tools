@@ -1,23 +1,26 @@
 import math
+import tarfile
 import zipfile
 from pathlib import Path
-from typing import Any, Callable
 from collections import OrderedDict
+from typing import Any, Callable, Literal
 
 import torch
 import requests
 import pandas as pd
 from tqdm import tqdm
 
+from ._gdown import download_from_gdrive
+
 
 def download_from_url(
     url: str,
     root: str | Path | None = None,
-    filename: str | None = None,
+    filename: str | Path | None = None,
     timeout: float | None = 100.0,
 ) -> Path:
     """
-    Download a file from a URL and save it locally.
+    Download a file from a URL.
 
     Args:
         url (str): Direct URL of the file to download.
@@ -34,17 +37,19 @@ def download_from_url(
     url_suffix = Path(url).suffix
 
     if filename:
+        filename = Path(filename)
         if url_suffix and not Path(filename).suffix:
-            filename = filename + url_suffix.lower()
+            filename = filename.with_suffix(url_suffix.lower())
     else:
-        filename = url_filename
+        filename = Path(url_filename)
 
     if root is not None:
         root = Path(root)
-        root.mkdir(parents=True, exist_ok=True)
         path = root / filename
     else:
-        path = Path(filename)
+        path = filename
+    
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
         return path
@@ -85,6 +90,58 @@ def download_from_url(
         return path
 
 
+def extract_tar(
+    tar_path: str | Path,
+    root: str | Path | None = None,
+    mode: Literal["tar", "gz", "bz2", "xz"] | None = None,
+) -> Path:
+    """
+    Extract a TAR file to a target directory.
+
+    Args:
+        tar_path (str or Path): Path to the TAR file.
+        root (str, Path or None): Optional extraction directory. Uses the parent
+        directory of the TAR file if None. Defaults to None.
+        mode (str or None): Optional compression mode (e.g 'tar', 'gz', 'bz2', 'xz').
+        Automatically detects mode if None. Defaults to None.
+
+    Returns:
+        Path: Directory where the files are extracted.
+    """
+    if mode not in {"tar", "gz", "bz2", "xz", None}:
+        raise ValueError(
+            f"Invalid mode: {mode}, expected one of 'tar', 'gz', 'bz2' or 'xz'"
+        )
+
+    mode = "r:*" if mode is None else f"r:{mode}"
+    tar_path = Path(tar_path)
+
+    if not tar_path.exists():
+        raise FileNotFoundError(f"TAR file not found: {tar_path}")
+
+    if root is None:
+        extract_dir = tar_path.parent
+    else:
+        extract_dir = Path(root)
+
+    if tar_path.name.endswith((".tar.gz", ".tar.bz2", ".tar.xz")):
+        tar_folder = extract_dir / tar_path.name.split(".", 1)[0]
+    else:
+        tar_folder = extract_dir / tar_path.with_suffix("")
+
+    if tar_folder.exists() and any(tar_folder.iterdir()):
+        return extract_dir
+
+    extract_dir.mkdir(parents=True, exist_ok=True)
+
+    with tarfile.open(tar_path, mode=mode) as tar_ref:
+        print(f"Extracting {tar_path} to {extract_dir}")
+        tar_ref.extractall(path=extract_dir, filter="data")
+        print(f"Extraction complete")
+
+    return extract_dir
+
+
 def extract_zip(
     zip_path: str | Path,
     root: str | Path | None = None,
@@ -94,8 +151,8 @@ def extract_zip(
 
     Args:
         zip_path (str or Path): Path to the ZIP file.
-        root (str, Path or None): Optional extraction directory or directory named
-        after ZIP file if None. Defaults to None.
+        root (str, Path or None): Optional extraction directory. Uses the parent
+        directory of the ZIP file if None. Defaults to None.
 
     Returns:
         Path: Directory where the files are extracted.
@@ -106,35 +163,65 @@ def extract_zip(
         raise FileNotFoundError(f"ZIP file not found: {zip_path}")
 
     if root is None:
-        extract_dir = zip_path.with_suffix("")
+        extract_dir = zip_path.parent
     else:
         extract_dir = Path(root)
+
+    zip_folder = extract_dir / zip_path.with_suffix("")
+
+    if zip_folder.exists() and any(zip_folder.iterdir()):
+        return extract_dir
 
     extract_dir.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        members = zip_ref.namelist()
+        print(f"Extracting {zip_path} to {extract_dir}")
+        zip_ref.extractall(path=extract_dir)
+        print(f"Extraction complete")
 
-        with tqdm(total=len(members, desc=f"Extracting {zip_path.name}")) as pbar:
-            for member in members:
-                target_path = extract_dir / member
+    return extract_dir
 
-                if target_path.exists():
-                    pbar.update(1)
-                    continue
 
-                target_path.parent.mkdir(parents=True, exist_ok=True)
+def download_and_extract_tar(
+    url: str,
+    root: str | Path | None = None,
+    filename: str | None = None,
+    mode: Literal["tar", "gz", "bz2", "xz"] | None = None,
+    from_gdrive: bool = False,
+    remove_tar: bool = False,
+):
+    """
+    Download a TAR file from URL and extracts its contents.
 
-                zip_ref.extract(member, extract_dir)
-                pbar.update(1)
+    Args:
+        url (str): URL of the TAR file to download.
+        root (str, Path or None): Optional directory for download and extraction.
+        Current working directory if None.
+        filename (str or None): Optional filename for the downloaded TAR file.
+        mode (str or None): Optional compression mode (e.g 'tar', 'gz', 'bz2', 'xz').
+        from_gdrive (bool): Whether the URL is from Google Drive. Defaults to False.
+        remove_tar (bool): Whether to remove tar file after extracting its contents.
+
+    Returns:
+        Path: Directory where the files were extracted.
+    """
+    if from_gdrive:
+        tar_path = download_from_gdrive(url, root=root, filename=filename)
+    else:
+        tar_path = download_from_url(url, root=root, filename=filename)
+    extract_dir = extract_tar(tar_path, root=root, mode=mode)
+
+    if remove_tar:
+        tar_path.unlink()
 
     return extract_dir
 
 
 def download_and_extract_zip(
     url: str,
-    download_root: str | Path | None,
+    root: str | Path | None = None,
     filename: str | None = None,
+    from_gdrive: bool = False,
     remove_zip: bool = False,
 ):
     """
@@ -142,15 +229,20 @@ def download_and_extract_zip(
 
     Args:
         url (str): URL of the ZIP file to download.
-        download_root (str, Path or None): Directory for download and extraction.
+        root (str, Path or None): Optional directory for download and extraction.
+        Uses current working directory if None.
         filename (str or None): Optional filename for the downloaded ZIP file.
+        from_gdrive (bool): Whether the URL is from Google Drive. Defaults to False.
         remove_zip (bool): Whether to remove zip file after extracting its contents.
 
     Returns:
         Path: Directory where the files were extracted.
     """
-    zip_path = download_from_url(url, root=download_root, filename=filename)
-    extract_dir = extract_zip(zip_path, root=download_root)
+    if from_gdrive:
+        zip_path = download_from_gdrive(url, root=root, filename=filename)
+    else:
+        zip_path = download_from_url(url, root=root, filename=filename)
+    extract_dir = extract_zip(zip_path, root=root)
 
     if remove_zip:
         zip_path.unlink()

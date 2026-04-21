@@ -1,4 +1,4 @@
-from typing import Any, Callable, Union
+from typing import Any, Callable, Literal, Union
 
 import torch
 import numpy as np
@@ -69,7 +69,7 @@ class Compose:
     """
 
     def __init__(self, transforms: list[Callable]):
-        self.transforms = transforms
+        self._transforms = transforms
 
     def __call__(self, data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
         """
@@ -81,9 +81,29 @@ class Compose:
         Returns:
             pd.DataFrame or pd.Series: Transformed data.
         """
-        for transform in self.transforms:
+        for transform in self._transforms:
             data = transform(data)
         return data
+
+    def __getitem__(self, index: int | slice) -> Callable | list[Callable]:
+        """
+        Access transforms by index or slice.
+
+        Args:
+            index (int or slice): The position or range of transforms to receive.
+
+        Returns:
+            Callable  or list[Callable]: A single transform or list of transforms.
+        """
+        return self._transforms[index]
+
+    def __len__(self):
+        """
+        Returns:
+            int: The number of composed transforms.
+
+        """
+        return len(self._transforms)
 
 
 class DropNaColumns:
@@ -138,6 +158,7 @@ class OneHotEncoder:
         drop_first (bool): Whether to drop the first category in each encoded column to avoid collinearity.
         Defaults to False.
         dtype (type): Data type for the resulting one-hot encoded columns. Defaults to np.uint8.
+        **kwargs (Any): Passed directly to pd.get_dummies.
     """
 
     def __init__(
@@ -145,10 +166,10 @@ class OneHotEncoder:
         columns: str | list[str] | None = None,
         drop_first: bool = False,
         dtype: type = np.uint8,
+        **kwargs: Any,
     ):
         self._columns = [columns] if isinstance(columns, str) else columns
-        self._drop_first = drop_first
-        self._dtype = dtype
+        self._kwargs = {"drop_first": drop_first, "dtype": dtype, **kwargs}
 
     def __call__(self, data: pd.Series | pd.DataFrame) -> pd.DataFrame:
         """
@@ -171,19 +192,13 @@ class OneHotEncoder:
                         f"but received '{self._columns[0]}'"
                     )
 
-            return pd.get_dummies(
-                data,
-                drop_first=self._drop_first,
-                dtype=self._dtype,
-            )
+            return pd.get_dummies(data, **self._kwargs)
 
         if isinstance(data, pd.DataFrame):
-            cols = self._columns or data.columns
             return pd.get_dummies(
                 data,
-                columns=cols,
-                drop_first=self._drop_first,
-                dtype=self._dtype,
+                columns=self._columns,
+                **self._kwargs,
             )
 
 
@@ -332,6 +347,66 @@ class ToTensor:
 
         return data
 
+class ApplyToColumn(ColwiseTransform):
+    """
+    Apply transforms to specified columns.
+    
+    Args:
+        columns (str or list[str]): Column name(s) to apply transform to.
+        transform (Callable or list[Callable]): Transformation(s) to apply.
+    """
+    
+    def __init__(self, columns: str | list[str], transform: Callable | list[Callable]):
+        super().__init__(columns)
+        self._transforms = (
+            transform if isinstance(transform, (list, tuple)) else [transform]
+        )
+    
+    def compute(self, column: pd.Series) -> pd.Series:
+        """
+        Apply transformations to the specified column.
+        
+        Args:
+            column (pd.Series): Input column to transform.
+            
+        Returns:
+            pd.Series: Transformed column.
+        """
+        for transform in self._transforms:
+            column = transform(column)
+        return column
+
+class ApplyToDtype(ColwiseTransform):
+    """
+    Apply transforms to columns matching specific dtypes.
+
+    Args:
+        transform (Callable or list[Callable]): Transformation(s) to apply.
+        dtype (Any, list[Any]): Target dtype(s) (e.g 'int64', np.float32).
+    """
+
+    def __init__(self, transform: Callable | list[Callable], dtype: Any | list[Any]):
+        super().__init__(None)
+        self._transforms = (
+            transform if isinstance(transform, (list, tuple)) else [transform]
+        )
+        self._dtype = dtype if isinstance(dtype, (list, tuple)) else [dtype]
+
+    def compute(self, column: pd.Series) -> pd.Series:
+        """
+        Apply transformations if the column's dtype matches the target dtype.
+
+        Args:
+            column (pd.Series): Input column to check and potentially transform.
+
+        Returns:
+            pd.Series: Transformed columns if dtype matches, otherwise the original column.
+        """
+        if any(pd.api.types.is_dtype_equal(column.dtype, t) for t in self._dtype):
+            for transform in self._transforms:
+                column = transform(column)
+        return column
+
 
 class Binarizer(ColwiseTransform):
     """
@@ -429,7 +504,7 @@ class FrequencyEncoder(StatefulColwiseTransform):
         self,
         columns: list[str] | None = None,
         normalize: bool = True,
-        handle_unknown: str = "error",
+        handle_unknown: Literal["error", "use_encoded_value", "ignore"] = "error",
         unknown_value: float = 0.0,
         retain_params: bool = True,
     ):
@@ -503,7 +578,7 @@ class LabelTransform(StatefulColwiseTransform):
     def __init__(
         self,
         columns: list[str],
-        handle_unknown: str = "error",
+        handle_unknown: Literal["error", "ignore"] = "error",
         retain_params: bool = True,
     ):
         super().__init__(columns, retain_params)
@@ -727,7 +802,7 @@ class OrdinalEncoder(StatefulColwiseTransform):
     def __init__(
         self,
         columns: list[str] | None = None,
-        handle_unknown: str = "error",
+        handle_unknown: Literal["error", "use_encoded_value", "ignore"] = "error",
         unknown_value: int = -1,
         retain_params: bool = True,
     ):
@@ -791,16 +866,16 @@ class SimpleImputer(StatefulColwiseTransform):
         "constant": replace NaN with a provided fill_value
 
     Args:
-        columns (str, list[str]): Column(s) to impute.
+        columns (str, list[str] or None): Column(s) to impute. All if None. Defaults to None.
         strategy (str): Imputation strategy to use. Defaults to "mean".
-        fill_value (Any | None): Value used when strategy="constant". Defaults to None.
+        fill_value (Any or None): Value used when strategy="constant". Defaults to None.
         retain_params (bool): Whether to store computed parameters. Defaults to True.
     """
 
     def __init__(
         self,
-        columns: list[str],
-        strategy: str = "mean",
+        columns: str | list[str] | None = None,
+        strategy: Literal["mean", "median", "most_frequent", "constant"] = "mean",
         fill_value: Any | None = None,
         retain_params: bool = True,
     ):

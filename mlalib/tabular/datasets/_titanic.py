@@ -51,3 +51,4 @@ class Titanic(TabularDataLoader):
             transform=transform,
             **kwargs,
         )
+

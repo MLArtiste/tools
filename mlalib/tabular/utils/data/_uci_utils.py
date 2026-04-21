@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import requests
 
@@ -82,7 +82,9 @@ class UCIDataLoader(TabularDataLoader):
         id: int,
         filename: str,
         root: str | Path | None = None,
-        file_fmt: str = "csv",
+        file_fmt: Literal[
+            "csv", "excel", "json", "parquet", "xml", "html", "sql"
+        ] = "csv",
         transform: Callable | None = None,
         download: bool = False,
         **kwargs: Any,

@@ -8,7 +8,7 @@ PandasObj = Union[pd.DataFrame, pd.Series]
 
 def load_dataset(
     path: str | Path,
-    file_fmt: str,
+    file_fmt: Literal["csv", "excel", "json", "parquet", "xml", "html", "sql"],
     transform: Callable[[PandasObj], PandasObj] | None = None,
     **kwargs,
 ) -> Any:
@@ -113,7 +113,7 @@ class TabularDataLoader:
     def __init__(
         self,
         path: str | Path,
-        file_fmt: str,
+        file_fmt: Literal["csv", "excel", "json", "parquet", "xml", "html", "sql"],
         transform: Callable[[PandasObj], PandasObj] | None = None,
         mode: Literal["eager", "lazy"] = "eager",
         batch_size: int = 100000,
@@ -134,10 +134,9 @@ class TabularDataLoader:
             raise ValueError(
                 f"Unsupported mode: '{mode}', expected one of 'eager' or 'lazy'"
             )
-        
+
         if self._mode == "lazy" and self._file_fmt != "csv":
             raise RuntimeError("Lazy mode is only supported for CSV files.")
-
 
     def load_dataset(self) -> Any:
         """
