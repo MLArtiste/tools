@@ -53,6 +53,7 @@ class PennTreebank:
                 "Set download=True to download it."
             )
 
+
 class TimeMachine:
     """
     TimeMachine dataset.
@@ -84,6 +85,7 @@ class TimeMachine:
                 f"Dataset file {self.path} not found. "
                 "Set download=True to download it."
             )
+
 
 class WikiText2:
     """
@@ -123,6 +125,7 @@ class WikiText2:
                 f"Dataset file {self.path} not found. "
                 "Set download=True to download it."
             )
+
 
 class WikiText103:
     """

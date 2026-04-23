@@ -18,7 +18,7 @@ from ._classification import (
     YelpReviewFull,
     YelpReviewPolarity,
 )
-from ._language_modeling import PennTreebank, WikiText2, WikiText103
+from ._language_modeling import PennTreebank, TimeMachine, WikiText2, WikiText103
 
 __all__ = [
     "AG_News",
@@ -36,6 +36,7 @@ __all__ = [
     "SogouNews",
     "SST2",
     "STSB",
+    "TimeMachine",
     "WikiText103",
     "WikiText2",
     "WNLI",
