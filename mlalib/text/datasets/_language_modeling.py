@@ -9,7 +9,7 @@ class PennTreebank:
     PennTreebank Dataset.
 
     Args:
-        root (strw, Path or None): Optional directory where the dataset file is stored or to be downloaded.
+        root (str, Path or None): Optional directory where the dataset file is stored or to be downloaded.
         Uses current working directory if None. Defaults to None.
         split (str): Split to load. e.g ("train", "val", "test"). Defaults to "train".
         download (bool): Whether to download the dataset from the internet. Defaults to False.
@@ -53,6 +53,37 @@ class PennTreebank:
                 "Set download=True to download it."
             )
 
+class TimeMachine:
+    """
+    TimeMachine dataset.
+
+    Args:
+        root (str, Path or None): Optional directory where the dataset file is stored or to be downloaded.
+        Uses current working directory if None. Defaults to None.
+        download (bool): Whether to download the dataset from the internet. Defaults to False.
+    """
+
+    _URL = "http://d2l-data.s3-accelerate.amazonaws.com/timemachine.txt"
+
+    def __init__(
+        self,
+        root: str | Path | None = None,
+        download: bool = False,
+    ):
+        root = Path(root) if root is not None else Path.cwd()
+        self.path = root / "time_machine" / "timemachine.txt"
+
+        if self.path.is_file():
+            return
+
+        if download:
+            filename = f"time_machine/timemachine.txt"
+            download_from_url(self._URL, root=root, filename=filename)
+        if not self.path.is_file():
+            raise FileNotFoundError(
+                f"Dataset file {self.path} not found. "
+                "Set download=True to download it."
+            )
 
 class WikiText2:
     """
