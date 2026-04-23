@@ -106,6 +106,47 @@ class Compose:
         return len(self._transforms)
 
 
+class DropDuplicates:
+    """
+    Drop duplicates rows from a DataFrame.
+
+    Args:
+        subset (str or List[str] or None): Columns to consider when dropping duplicates.
+        keep Literal['first', 'last', False]: Which duplicates to keep.
+            - "first": Drop duplicates except for the first occurrence.
+            - "last": Drop duplicates except for the last occurrence.
+            - False: Drop all duplicates.
+        Defaults to 'first'.
+        ignore_index (bool): Whether to reset index after dropping. Defaults to True.
+    """
+
+    def __init__(
+        self,
+        subset: str | list[str] | None = None,
+        keep: Literal["first", "last", False] = "first",
+        ignore_index: bool = True,
+    ):
+        self._subset = [subset] if isinstance(subset, str) else subset
+        self._keep = keep
+        self._ignore_index = ignore_index
+
+    def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Return a DataFrame with duplicate rows removed.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+        
+        Returns:
+            pd.DataFrame: A new DataFrame with duplicates dropped.
+        """
+        return df.drop_duplicates(
+            subset=self._subset,
+            keep=self._keep,
+            ignore_index=self._ignore_index,
+        )
+
+
 class DropNaColumns:
     """
     Drop columns that contain NaN values.
@@ -347,34 +388,36 @@ class ToTensor:
 
         return data
 
+
 class ApplyToColumn(ColwiseTransform):
     """
     Apply transforms to specified columns.
-    
+
     Args:
         columns (str or list[str]): Column name(s) to apply transform to.
         transform (Callable or list[Callable]): Transformation(s) to apply.
     """
-    
+
     def __init__(self, columns: str | list[str], transform: Callable | list[Callable]):
         super().__init__(columns)
         self._transforms = (
             transform if isinstance(transform, (list, tuple)) else [transform]
         )
-    
+
     def compute(self, column: pd.Series) -> pd.Series:
         """
         Apply transformations to the specified column.
-        
+
         Args:
             column (pd.Series): Input column to transform.
-            
+
         Returns:
             pd.Series: Transformed column.
         """
         for transform in self._transforms:
             column = transform(column)
         return column
+
 
 class ApplyToDtype(ColwiseTransform):
     """
