@@ -232,7 +232,7 @@ class BaseNNTrainer(ABC):
         """
         if not self._checkpoint_path or not Path(self._checkpoint_path).exists():
             raise FileNotFoundError(
-                f"no checkpoint found at {self._checkpoint_path} to resume from."
+                f"no checkpoint found at {self._checkpoint_path} to resume from"
             )
         checkpoint = torch.load(
             self._checkpoint_path, map_location=self.device, weights_only=False
