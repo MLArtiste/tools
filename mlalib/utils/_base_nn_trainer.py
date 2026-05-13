@@ -65,9 +65,9 @@ class BaseNNTrainer(ABC):
 
         if device is None:
             self.device = torch.device(
-                torch.accelerator.current_accelerator().type
+                torch.accelerator.current_accelerator()
                 if torch.accelerator.is_available()
-                else "cpu"
+                else torch.device("cpu")
             )
         else:
             self.device = torch.device(device)
@@ -105,11 +105,16 @@ class BaseNNTrainer(ABC):
             for metric in self._metrics.values():
                 metric.to(self.device)
 
-        if self._checkpoint_metric not in self._history:
-            raise ValueError(
-                f"""invalid checkpoint metric '{self._checkpoint_metric}'. 
-                Expected one of {list(self._history.keys())}"""
+        if self._checkpoint_path is not None:
+            self._checkpoint_path = Path(self._checkpoint_path)
+            best_filename = (
+                f"{self._checkpoint_path.stem}_best{self._checkpoint_path.suffix}"
             )
+            self._best_checkpoint_path = self._checkpoint_path.with_name(best_filename)
+
+        if self._checkpoint_metric not in self._history:
+            raise ValueError(f"""invalid checkpoint metric '{self._checkpoint_metric}'. 
+                Expected one of {list(self._history.keys())}""")
 
         if isinstance(self._scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
             if self._lrs_metric not in self._history:
@@ -179,19 +184,16 @@ class BaseNNTrainer(ABC):
 
     def _checkpoint(
         self,
+        improved: bool,
         verbose: bool = True,
     ):
         """
         checkpoint training progress.
 
         Args:
+            improved (bool): Whether the monitored metric has improved.
             verbose (bool): Whether to show checkpointing detail. Defaults to True.
         """
-        if verbose:
-            print(
-                f"Checkpoint at {self._checkpoint_metric} = {self._best_metric_val:.4f}"
-            )
-
         model = (
             self.model.module
             if isinstance(self.model, torch.nn.DataParallel)
@@ -210,6 +212,14 @@ class BaseNNTrainer(ABC):
 
         if self._scheduler is not None:
             checkpoint["scheduler_state_dict"] = self._scheduler.state_dict()
+
+        if improved:
+            if verbose:
+                print(
+                    f"Saving best checkpoint at "
+                    f"{self._checkpoint_metric} = {self._best_metric_val:.4f}"
+                )
+            torch.save(model.state_dict(), self._best_checkpoint_path)
 
         torch.save(checkpoint, self._checkpoint_path)
 
@@ -399,10 +409,12 @@ class BaseNNTrainer(ABC):
         if resume:
             start_epoch = self._load_checkpoint()
             if start_epoch >= epochs:
-                print(f"Training already completed up to epoch {start_epoch}. Increase 'epochs' to continue.")
+                print(
+                    f"Training already completed up to epoch {start_epoch}. Increase 'epochs' to continue."
+                )
                 return
             if verbose:
-                print(f"Resuming training from Epoch {start_epoch}/{epochs}.")
+                print(f"Resuming training from Epoch {start_epoch+1}/{epochs}.")
 
         for epoch in range(start_epoch, epochs):
             self._train_loop(train_dataloader, epoch, epochs, verbose)
@@ -416,10 +428,10 @@ class BaseNNTrainer(ABC):
             if self._checkpoint_path is not None or self._patience is not None:
                 improved = self._check_improvement()
 
-                if improved and self._checkpoint_path:
-                    self._checkpoint(verbose)
+                if self._checkpoint_path:
+                    self._checkpoint(improved, verbose)
 
-                if self._patience is not None:
+                if epoch < epochs - 1 and self._patience is not None:
                     if improved:
                         self._es_counter = 0
                     else:
@@ -427,7 +439,14 @@ class BaseNNTrainer(ABC):
                         if verbose:
                             print(f"Patience: {self._es_counter}/{self._patience}.")
                         if self._es_counter >= self._patience:
-                            print("Early stopping triggered.")
+                            metric = self._history[self._checkpoint_metric]
+                            value = (
+                                min(metric) if self._minimize_metric else max(metric)
+                            )
+                            print(
+                                f"Early stopping triggered at Epoch {epoch + 1} with "
+                                f"{self._checkpoint_metric} at {value:.4f}."
+                            )
                             break
 
     def plot(self, figsize: tuple[int, int] = (6, 4)) -> None:
