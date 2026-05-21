@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 import torch
 
 from ._utils import apply_to_tensor
+
+
 class Checkpointer:
     """
     Class for checkpointing training progress.
@@ -34,8 +36,9 @@ class Checkpointer:
         self._history = history
         self._es_counter = es_counter
         self._scheduler = scheduler
-        self.executor = ThreadPoolExecutor(max_workers=1)
-        self.future = None
+        self._executor = ThreadPoolExecutor(max_workers=1)
+        self._future = None
+        self.skipped = False
 
     def _stage(self, obj):
         """
@@ -69,7 +72,13 @@ class Checkpointer:
         return checkpoint
 
     def is_busy(self):
-        return self.future is not None and not self.future.done()
+        """
+        Return True if checkpointing is in progress.
+
+        Returns:
+            bool: Whether checkpointing is in progress.
+        """
+        return self._future is not None and not self._future.done()
 
     def async_save(self, path: str | Path):
         """
@@ -79,8 +88,10 @@ class Checkpointer:
             path (str or Path): Path to save checkpoint.
         """
         if self.is_busy():
+            self.skipped = True
             return
-        self.future = self.executor.submit(torch.save, self.checkpoint(), path)
+        self.skipped = False
+        self._future = self._executor.submit(torch.save, self.checkpoint(), path)
 
     def sync_save(self, path: str | Path):
         """
@@ -88,15 +99,15 @@ class Checkpointer:
 
         Args:
             path (str or Path): Path to save checkpoint.
-        """  
-        if self.future is not None:
-            self.future.result()
+        """
+        if self._future is not None:
+            self._future.result()
         torch.save(self.checkpoint(), path)
 
     def shutdown(self):
         """
         Shutdown executor.
         """
-        if self.future is not None:
-            self.future.result()
-        self.executor.shutdown()
+        if self._future is not None:
+            self._future.result()
+        self._executor.shutdown()

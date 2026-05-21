@@ -127,16 +127,6 @@ class BaseNNTrainer(ABC):
                     f"""invalid learning rate scheduler metric '{self._lrs_metric}'. 
                     Expected one of {list(self._history.keys())}"""
                 )
-            
-        self._checkpointer = Checkpointer(
-            model=self.model,
-            optimizer=self._optimizer,
-            scaler=self._scaler,
-            history=self._history,
-            es_counter=self._es_counter,
-            scheduler=self._scheduler,
-        )
-
 
     def _update_metrics(self, *args: Any) -> None:
         """
@@ -216,8 +206,8 @@ class BaseNNTrainer(ABC):
                     f"{self._checkpoint_metric} = {self._best_metric_val:.4f}"
                 )
             self._checkpointer.sync_save(self._best_checkpoint_path)
-        
-        if self.device.type = "cpu":
+
+        if self.device.type == "cpu":
             self._checkpointer.sync_save(self._checkpoint_path)
 
         else:
@@ -419,6 +409,16 @@ class BaseNNTrainer(ABC):
             verbose (bool): Whether to show full training details. Defaults to True.
             resume (bool): Whether to resume training with information from checkpoint_path. Defaults to False.
         """
+        if self._checkpoint_path is not None:
+            self._checkpointer = Checkpointer(
+                model=self.model,
+                optimizer=self._optimizer,
+                scaler=self._scaler,
+                history=self._history,
+                es_counter=self._es_counter,
+                scheduler=self._scheduler,
+            )
+
         start_epoch = 0
         if resume:
             start_epoch = self._load_checkpoint()
@@ -430,27 +430,36 @@ class BaseNNTrainer(ABC):
             if verbose:
                 print(f"Resuming training from Epoch {start_epoch+1}/{epochs}.")
 
-        for epoch in range(start_epoch, epochs):
-            self._train_loop(train_dataloader, epoch, epochs, verbose)
+        try:
+            for epoch in range(start_epoch, epochs):
+                self._train_loop(train_dataloader, epoch, epochs, verbose)
 
-            if val_dataloader:
-                self._validation_loop(val_dataloader, epoch, epochs, verbose)
+                if val_dataloader is not None:
+                    self._validation_loop(val_dataloader, epoch, epochs, verbose)
 
-            if self._scheduler:
-                self._scheduler_step()
+                if self._scheduler:
+                    self._scheduler_step()
 
-            improved = self._check_improvement()
+                improved = self._check_improvement()
 
-            if self._checkpoint_path:
-                self._checkpoint(improved, verbose)
+                if self._checkpoint_path:
+                    self._checkpoint(improved, verbose)
 
-            if self._patience is not None:
-                if self._early_stopping(improved, verbose):
-                    print(
-                        f"Early stopping triggered at Epoch {epoch + 1} with "
-                        f"{self._checkpoint_metric} at {self._best_metric_val}."
-                    )
-                    break
+                if self._patience is not None:
+                    if self._early_stopping(improved, verbose):
+                        print(
+                            f"Early stopping triggered at Epoch {epoch + 1} with "
+                            f"{self._checkpoint_metric} at {self._best_metric_val}."
+                        )
+                        if self._checkpoint_path and self._checkpointer.skipped:
+                            self._checkpointer.sync_save(self._checkpoint_path)
+                        break
+            if self._checkpoint_path and self._checkpointer.skipped:
+                self._checkpointer.sync_save(self._checkpoint_path)
+
+        finally:
+            if self._checkpointer is not None:
+                self._checkpointer.shutdown()
 
     def plot(self, figsize: tuple[int, int] = (6, 4)) -> None:
         """

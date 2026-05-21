@@ -274,7 +274,7 @@ def _readable_bytes(bytes: int) -> str:
     return f"{readable} {suffixes[rank]}"
 
 
-def apply_to_tensor(data: Any, fn: Callable) -> Any:
+def apply_to_tensor(obj: Any, fn: Callable) -> Any:
     """
     Recursively apply a function to all tensors in a nested structure.
 
@@ -285,14 +285,14 @@ def apply_to_tensor(data: Any, fn: Callable) -> Any:
     Returns:
         Any: Data with the function applied to all tensors.
     """
-    if isinstance(data, torch.Tensor):
-        return fn(data)
-    elif isinstance(data, (list, tuple)):
-        return type(data)(apply_to_tensor(x, fn) for x in data)
-    elif isinstance(data, dict):
-        return {k: apply_to_tensor(v, fn) for k, v in data.items()}
+    if isinstance(obj, torch.Tensor):
+        return fn(obj)
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(apply_to_tensor(x, fn) for x in obj)
+    elif isinstance(obj, dict):
+        return {k: apply_to_tensor(v, fn) for k, v in obj.items()}
     else:
-        return data
+        return obj
 
 
 def summary(
