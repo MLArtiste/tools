@@ -20,7 +20,8 @@ dependencies = [
   "tqdm",
   "requests",
   "torch",
-  "torchmetrics"
+  "torchmetrics",
+  "accelerate"
 ]
 
 [project.urls]

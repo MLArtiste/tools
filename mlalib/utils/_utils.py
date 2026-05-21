@@ -274,7 +274,7 @@ def _readable_bytes(bytes: int) -> str:
     return f"{readable} {suffixes[rank]}"
 
 
-def _apply_to_data(data: Any, fn: Callable) -> Any:
+def apply_to_tensor(data: Any, fn: Callable) -> Any:
     """
     Recursively apply a function to all tensors in a nested structure.
 
@@ -288,9 +288,9 @@ def _apply_to_data(data: Any, fn: Callable) -> Any:
     if isinstance(data, torch.Tensor):
         return fn(data)
     elif isinstance(data, (list, tuple)):
-        return type(data)(_apply_to_data(x, fn) for x in data)
+        return type(data)(apply_to_tensor(x, fn) for x in data)
     elif isinstance(data, dict):
-        return {k: _apply_to_data(v, fn) for k, v in data.items()}
+        return {k: apply_to_tensor(v, fn) for k, v in data.items()}
     else:
         return data
 
@@ -328,9 +328,9 @@ def summary(
             nonlocal batch_size
             batch_size = t.shape[0]
 
-        _apply_to_data(input, get_batch_size)
+        apply_to_tensor(input, get_batch_size)
 
-        input = _apply_to_data(input, lambda t: t[0:1].to(device))
+        input = apply_to_tensor(input, lambda t: t[0:1].to(device))
 
         summary_data = OrderedDict()
         hooks = []
@@ -343,7 +343,7 @@ def summary(
             input_mem += t.numel() * t.element_size()
             return t
 
-        _apply_to_data(input, count_input_mem)
+        apply_to_tensor(input, count_input_mem)
 
         def register_hook_recursive(module, module_depth=0):
             is_leaf = len(list(module.children())) == 0
@@ -370,7 +370,7 @@ def summary(
                     if is_leaf:
                         activation_numel += t.numel()
 
-                _apply_to_data(out, process_output)
+                apply_to_tensor(out, process_output)
 
             hooks.append(module.register_forward_hook(hook))
 

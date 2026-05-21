@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -11,6 +12,9 @@ from torch.optim import Optimizer
 from torchmetrics.metric import Metric
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import LRScheduler
+
+
+from ._checkpointer import Checkpointer
 
 
 class BaseNNTrainer(ABC):
@@ -63,6 +67,11 @@ class BaseNNTrainer(ABC):
         if grad_clip_val is not None and grad_clip_val <= 0:
             raise ValueError("grad_clip_val must be positive")
 
+        if torch.accelerator.device_count() > 1:
+            warnings.warn(
+                "Multiple-device training is unsupported. Using a single device instead."
+            )
+
         if device is None:
             self.device = torch.device(
                 torch.accelerator.current_accelerator()
@@ -73,10 +82,6 @@ class BaseNNTrainer(ABC):
             self.device = torch.device(device)
 
         model.to(self.device)
-
-        if device is None and torch.accelerator.device_count() > 1:
-            model = torch.nn.DataParallel(model)
-
         self.model = model
         self._optimizer = optimizer
         self._loss_fn = loss_fn
@@ -122,6 +127,16 @@ class BaseNNTrainer(ABC):
                     f"""invalid learning rate scheduler metric '{self._lrs_metric}'. 
                     Expected one of {list(self._history.keys())}"""
                 )
+            
+        self._checkpointer = Checkpointer(
+            model=self.model,
+            optimizer=self._optimizer,
+            scaler=self._scaler,
+            history=self._history,
+            es_counter=self._es_counter,
+            scheduler=self._scheduler,
+        )
+
 
     def _update_metrics(self, *args: Any) -> None:
         """
@@ -194,38 +209,23 @@ class BaseNNTrainer(ABC):
             improved (bool): Whether the monitored metric has improved.
             verbose (bool): Whether to show checkpointing detail. Defaults to True.
         """
-        model = (
-            self.model.module
-            if isinstance(self.model, torch.nn.DataParallel)
-            else self.model
-        )
-
-        checkpoint = {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": self._optimizer.state_dict(),
-            "history": self._history,
-            "best_metric_val": self._best_metric_val,
-            "scaler_state_dict": self._scaler.state_dict(),
-            "epoch": len(self._history["train_loss"]),
-            "es_counter": self._es_counter,
-        }
-
-        if self._scheduler is not None:
-            checkpoint["scheduler_state_dict"] = self._scheduler.state_dict()
-
         if improved:
             if verbose:
                 print(
                     f"Saving best checkpoint at "
                     f"{self._checkpoint_metric} = {self._best_metric_val:.4f}"
                 )
-            torch.save(model.state_dict(), self._best_checkpoint_path)
+            self._checkpointer.sync_save(self._best_checkpoint_path)
+        
+        if self.device.type = "cpu":
+            self._checkpointer.sync_save(self._checkpoint_path)
 
-        torch.save(checkpoint, self._checkpoint_path)
+        else:
+            self._checkpointer.async_save(self._checkpoint_path)
 
     def _load_checkpoint(self) -> int:
         """
-        Load state from checkpoint_path.
+        Load checkpoint from checkpoint_path.
 
         Returns:
             int: The next epoch index to start from.
@@ -235,37 +235,51 @@ class BaseNNTrainer(ABC):
                 f"no checkpoint found at {self._checkpoint_path} to resume from"
             )
         checkpoint = torch.load(
-            self._checkpoint_path, map_location=self.device, weights_only=False
+            self._checkpoint_path, map_location=self.device, weights_only=True
         )
         if "model_state_dict" not in checkpoint:
             raise KeyError("Checkpoint is missing 'model_state_dict'")
 
-        model = (
-            self.model.module
-            if isinstance(self.model, torch.nn.DataParallel)
-            else self.model
-        )
-        model.load_state_dict(checkpoint["model_state_dict"])
+        self.model.load_state_dict(checkpoint["model_state_dict"])
 
         if "optimizer_state_dict" in checkpoint:
             self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-        for state in self._optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = v.to(self.device)
-
         self._history = checkpoint.get("history", self._history)
-        self._best_metric_val = checkpoint.get("best_metric_val", self._best_metric_val)
+        metric = self._history[self._checkpoint_metric]
+        self._best_metric_val = min(metric) if self._minimize_metric else max(metric)
         self._es_counter = checkpoint.get("es_counter", 0)
 
-        if "scaler_state_dict" in checkpoint and self._use_amp:
+        if self._use_amp and "scaler_state_dict" in checkpoint:
             self._scaler.load_state_dict(checkpoint["scaler_state_dict"])
 
         if self._scheduler and "scheduler_state_dict" in checkpoint:
             self._scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
         return checkpoint.get("epoch", len(self._history.get("train_loss", [])))
+
+    def _early_stopping(self, improved, verbose=True):
+        """
+        Check if early stopping should be triggered.
+
+        Args:
+            improved (bool): Whether the monitored metric has improved.
+            verbose (bool): Whether to show early stopping detail. Defaults to True.
+
+        Returns:
+            bool: Whether early stopping should be triggered.
+        """
+        if improved:
+            self._es_counter = 0
+        else:
+            self._es_counter += 1
+            if verbose:
+                print(f"Patience: {self._es_counter}/{self._patience}.")
+
+        if self._es_counter >= self._patience:
+            return True
+
+        return False
 
     @abstractmethod
     def forward_step(self, batch_data: Any) -> Any:
@@ -425,29 +439,18 @@ class BaseNNTrainer(ABC):
             if self._scheduler:
                 self._scheduler_step()
 
-            if self._checkpoint_path is not None or self._patience is not None:
-                improved = self._check_improvement()
+            improved = self._check_improvement()
 
-                if self._checkpoint_path:
-                    self._checkpoint(improved, verbose)
+            if self._checkpoint_path:
+                self._checkpoint(improved, verbose)
 
-                if epoch < epochs - 1 and self._patience is not None:
-                    if improved:
-                        self._es_counter = 0
-                    else:
-                        self._es_counter += 1
-                        if verbose:
-                            print(f"Patience: {self._es_counter}/{self._patience}.")
-                        if self._es_counter >= self._patience:
-                            metric = self._history[self._checkpoint_metric]
-                            value = (
-                                min(metric) if self._minimize_metric else max(metric)
-                            )
-                            print(
-                                f"Early stopping triggered at Epoch {epoch + 1} with "
-                                f"{self._checkpoint_metric} at {value:.4f}."
-                            )
-                            break
+            if self._patience is not None:
+                if self._early_stopping(improved, verbose):
+                    print(
+                        f"Early stopping triggered at Epoch {epoch + 1} with "
+                        f"{self._checkpoint_metric} at {self._best_metric_val}."
+                    )
+                    break
 
     def plot(self, figsize: tuple[int, int] = (6, 4)) -> None:
         """
