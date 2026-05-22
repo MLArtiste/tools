@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -60,7 +61,7 @@ class Checkpointer:
             "model_state_dict": self._stage(self._model.state_dict()),
             "optimizer_state_dict": self._stage(self._optimizer.state_dict()),
             "scaler_state_dict": self._stage(self._scaler.state_dict()),
-            "history": self._history,
+            "history": copy.deepcopy(self._history),
             "es_counter": self._es_counter,
         }
 
