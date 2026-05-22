@@ -48,7 +48,7 @@ def download_from_url(
         path = root / filename
     else:
         path = filename
-    
+
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
@@ -279,11 +279,11 @@ def apply_to_tensor(obj: Any, fn: Callable) -> Any:
     Recursively apply a function to all tensors in a nested structure.
 
     Args:
-        data (Any): Input data (could be tensor, list, tuple, dict).
+        obj (Any): Nested structure (could be tensor, list, tuple, dict).
         fn (Callable): Function to apply to each tensor.
 
     Returns:
-        Any: Data with the function applied to all tensors.
+        Any: Nested structure with the function applied to all tensors.
     """
     if isinstance(obj, torch.Tensor):
         return fn(obj)
