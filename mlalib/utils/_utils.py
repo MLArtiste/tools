@@ -7,8 +7,11 @@ from typing import Any, Callable, Literal
 
 import torch
 import requests
+import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from tqdm import tqdm
+
 
 from ._gdown import download_from_gdrive
 
@@ -438,3 +441,89 @@ def summary(
         )
 
         return pd.concat([df, footer], ignore_index=True)
+
+
+def plot_functions(
+    funcs: Callable | list[Callable],
+    x=None,
+    grid: bool = False,
+    cols: int = 2,
+    figsize: tuple[int, int] | None = None,
+    labels: list[str] | None = None,
+    title: str | None = None,
+):
+    """
+    Plot one or more mathematical functions.
+
+    Args:
+        funcs(Callable or list[Callable]): A function or list of functions.
+        x (torch.Tensor): Input values. Defaults to torch.linspace(-10, 10, 100).
+        grid (bool): If True, plot each function in its own subplot grid.
+        Otherwise, overlay all functions on one plot. Defaults to False.
+        cols (int): Number of subplot columns when grid=True. Defaults to 2.
+        figsize (tuple[int, int]): Optional matplotlib figure size.
+        labels (list[str]): Optional labels for each function.
+        title (str): Optional figure title.
+    """
+
+    x = torch.linspace(-10, 10, 100) if x is None else x
+    funcs = [funcs] if callable(funcs) else list(funcs)
+    labels = [f.__name__ for f in funcs] if labels is None else labels
+
+    if len(funcs) != len(labels):
+        raise ValueError("Number of functions and labels must be equal.")
+
+    def to_numpy(arr):
+        if isinstance(arr, torch.Tensor):
+            return arr.detach().cpu().numpy()
+        return np.asarray(arr)
+
+    x_np = to_numpy(x)
+    ys = [to_numpy(f(x)) for f in funcs]
+
+    # Single combined plot
+    if not grid or len(funcs) == 1:
+        plt.figure(figsize=figsize)
+
+        for y, label in zip(ys, labels):
+            plt.plot(x_np, y, label=label)
+
+        plt.xlabel("x")
+        plt.ylabel("y")
+
+        if title:
+            plt.title(title)
+
+        if len(funcs) > 1:
+            plt.legend()
+
+        plt.grid(True)
+        plt.show()
+
+        return
+
+    # Grid plotting
+    rows = math.ceil(len(funcs) / cols)
+
+    fig, axes = plt.subplots(
+        rows,
+        cols,
+        figsize=figsize or (5 * cols, 4 * rows),
+    )
+
+    axes = np.array(axes).reshape(-1)
+
+    for ax, y, label in zip(axes, ys, labels):
+        ax.plot(x_np, y)
+        ax.set_title(label)
+        ax.grid(True)
+
+    # Hide unused axes
+    for ax in axes[len(funcs) :]:
+        ax.axis("off")
+
+    if title:
+        fig.suptitle(title)
+
+    plt.tight_layout()
+    plt.show()
