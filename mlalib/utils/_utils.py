@@ -113,7 +113,7 @@ def extract_tar(
     """
     if mode not in {"tar", "gz", "bz2", "xz", None}:
         raise ValueError(
-            f"Invalid mode: {mode}, expected one of 'tar', 'gz', 'bz2' or 'xz'"
+            f"invalid mode: {mode}, expected one of 'tar', 'gz', 'bz2' or 'xz'"
         )
 
     mode = "r:*" if mode is None else f"r:{mode}"
@@ -471,7 +471,7 @@ def plot_functions(
     labels = [f.__name__ for f in funcs] if labels is None else labels
 
     if len(funcs) != len(labels):
-        raise ValueError("Number of functions and labels must be equal.")
+        raise ValueError("number of functions and labels must be equal")
 
     def to_numpy(arr):
         if isinstance(arr, torch.Tensor):
