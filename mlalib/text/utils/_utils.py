@@ -1,10 +1,12 @@
+import re
 import json
 from abc import ABC, abstractmethod
 from collections import Counter
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Callable, Iterator
 
 import torch
+
 
 class Tokenizer(ABC):
     """
@@ -66,35 +68,33 @@ class Vocab:
 
         if idx_to_token is not None and not isinstance(idx_to_token, dict):
             raise ValueError("idx_to_token must be a dictionary")
-        
+
         provided = (token_to_idx is not None) + (idx_to_token is not None)
 
         if provided != 1:
-            raise ValueError("only one of token_to_idx or idx_to_token must be provided")
-        
-        
+            raise ValueError(
+                "only one of token_to_idx or idx_to_token must be provided"
+            )
+
         if token_to_idx is not None:
             if len(set(token_to_idx.values())) != len(token_to_idx):
                 raise ValueError("indices must be unique")
-            
+
             if not torch.jit.isinstance(token_to_idx, dict[str, int]):
                 raise TypeError("token_to_idx must be a dictionary of str to int")
-            
+
             self._token_to_idx = token_to_idx.copy()
             self._idx_to_token = {v: k for k, v in self._token_to_idx.items()}
-
 
         if idx_to_token is not None:
             if len(set(idx_to_token.values())) != len(idx_to_token):
                 raise ValueError("tokens must be unique")
-            
+
             if not torch.jit.isinstance(idx_to_token, dict[int, str]):
                 raise TypeError("idx_to_token must be a dictionary of int to str")
-            
+
             self._idx_to_token = idx_to_token.copy()
             self._token_to_idx = {v: k for k, v in self._idx_to_token.items()}
-
-
 
         self.pad = self._token_to_idx.get("<pad>")
         self.unk = self._token_to_idx.get("<unk>")
@@ -145,9 +145,7 @@ class Vocab:
         else:
             idx_to_token = tuple(core_specials + tokens + user_specials)
 
-        return cls(
-            token_to_idx={token: idx for idx, token in enumerate(idx_to_token)}
-        )
+        return cls(token_to_idx={token: idx for idx, token in enumerate(idx_to_token)})
 
     def __len__(self) -> int:
         """
@@ -217,7 +215,7 @@ class Vocab:
             dict[int, str]: The index to string mapping.
         """
         return self._idx_to_token.copy()
-    
+
     def save(self, path: str | Path) -> None:
         """
         Save vocabulary to a JSON file.
@@ -231,7 +229,7 @@ class Vocab:
                 f,
                 ensure_ascii=False,
             )
-    
+
     @classmethod
     def load(cls, path: str | Path) -> "Vocab":
         """
@@ -251,7 +249,19 @@ class Vocab:
 class WordTokenizer(Tokenizer):
     """
     Word-level tokenizer.
+
+    Args:
+        keep_punctuation (bool): Whether or not to keep punctuations. Defaults to True.
+
     """
+
+    def __init__(self, keep_punctuation: bool = True):
+        if keep_punctuation:
+            pattern = "[A-Za-z]+|\\d+|[{-~\\[-`:-@!-\\/]"
+        else:
+            pattern = "[A-Za-z]+|\\d+"
+
+        self.token_regex = re.compile(pattern)
 
     def tokenize(self, text: str) -> list[str]:
         """
@@ -261,9 +271,9 @@ class WordTokenizer(Tokenizer):
             text (str): Input string.
 
         Returns:
-            list[str]: List of wordsd.
+            list[str]: List of words.
         """
-        return text.split()
+        return self.token_regex.findall(text)
 
 
 def build_counter_from_iterator(iterator: Iterator[str]) -> Counter[str]:
@@ -311,23 +321,23 @@ def build_vocab_from_iterator(
 
 
 def ngrams_iterator(
-    tokens: list[str], n: int, only_n: bool = False, delimiter: str = " "
-) -> Iterator[str]:
+    tokens: list[Any], n: int, only_n: bool = True, transform: Callable = tuple
+) -> Iterator[Any]:
     """
     Args:
         tokens (list[str]): List of tokens.
         n (int): N-gram size.
-        only_n (bool): Whether to only return n-grams of size n or all n-grams up to n.
-        Defaults to False.
-        delimiter (str): Delimiter to use for joining tokens. Defaults to " ".
+        only_n (bool): Whether to only return n-grams of size n instead of all n-grams up to n.
+        Defaults to True.
+        transform (Callable): A function applied to every n-gram tuple. Defaults to tuple.
 
     Returns:
-        Iterator[str]: An iterator of n-grams.
+        Iterator[Any]: An iterator of n-grams.
     """
 
     def _get_ngram(n):
         for n_gram in zip(*[tokens[i:] for i in range(n)]):
-            yield delimiter.join(n_gram)
+            yield transform(n_gram)
 
     if only_n:
         yield from _get_ngram(n)

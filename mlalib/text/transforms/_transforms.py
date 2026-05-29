@@ -103,7 +103,7 @@ class RegexReplace(Module):
 
     def __init__(self, pattern: str, replacement: str):
         super().__init__()
-        self.pattern = re.compile(pattern)
+        self.pattern = pattern
         self.replacement = replacement
 
     def forward(self, input: Any) -> Any:
