@@ -5,6 +5,7 @@ from ._utils import (
     download_from_url,
     extract_tar,
     extract_zip,
+    plot_functions,
     summary,
 )
 from ._gdown import download_from_gdrive
@@ -16,6 +17,7 @@ ___all__ = [
     "download_from_url",
     "extract_tar",
     "extract_zip",
+    "plot_functions",
     "summary",
     "BaseNNTrainer",
 ]
