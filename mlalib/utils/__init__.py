@@ -1,11 +1,11 @@
 from ._base_nn_trainer import BaseNNTrainer
+from ._plotters import plot_functions, show_images
 from ._utils import (
     download_and_extract_tar,
     download_and_extract_zip,
     download_from_url,
     extract_tar,
     extract_zip,
-    plot_functions,
     summary,
 )
 from ._gdown import download_from_gdrive
@@ -18,6 +18,7 @@ ___all__ = [
     "extract_tar",
     "extract_zip",
     "plot_functions",
+    "show_images",
     "summary",
     "BaseNNTrainer",
 ]
