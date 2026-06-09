@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def plot_functions(
     funcs: Callable | list[Callable],
     x: torch.Tensor | None = None,
@@ -118,6 +119,11 @@ def show_images(
             imgs = [imgs]
 
     n_images = len(imgs)
+
+    if nrows < 1:
+        raise ValueError("nrows must be at least 1")
+
+    nrows = min(nrows, n_images)
 
     if labels is not None and len(labels) != n_images:
         raise ValueError(f"expected {n_images} labels, got {len(labels)}")
