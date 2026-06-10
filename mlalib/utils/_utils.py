@@ -3,7 +3,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 from collections import OrderedDict
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Iterator, Literal
 
 import torch
 import requests
@@ -438,3 +438,115 @@ def summary(
         )
 
         return pd.concat([df, footer], ignore_index=True)
+
+
+class HardSamples:
+    """
+    Base class for finding hard samples in a dataset.
+
+    The default implementation identifies misclassified samples.
+    Subclass this class and override `evaluate_batch()` to define
+    a custom notion of difficulty.
+
+    Args:
+        model (nn.Module): A PyTorch model.
+        dataloader (torch.utils.data.DataLoader): A PyTorch dataloader.
+        min_samples (int or None): The minimum number of indices to return
+        when get_indices() is called.
+        device (torch.device, str or None): Optional device to use for evaluation.
+    """
+
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        dataloader: torch.utils.data.DataLoader,
+        min_samples: int | None = None,
+        device: torch.device | str | None = None,
+    ):
+        self.model = model.to(device)
+        self._dataloader = dataloader
+        self.device = device
+        self._min_samples = min_samples
+        self._indices = []
+
+    def evaluate_batch(self, batch_data: Any) -> torch.Tensor:
+        """
+        Evaluate the difficulty of samples in a batch.
+
+        Notes:
+            Override this method in subclasses to define a custom
+            difficulty criterion. Please move data to self.device.
+
+        Args:
+            batch_data (Any): A batch of data.
+
+        Returns:
+            torch.Tensor: A tensor whose non-zero values indicate
+            difficult samples.
+        """
+        X, y = apply_to_tensor(batch_data, lambda x: x.to(self.device))
+        y_pred = self.model(X)
+        return y != y_pred.argmax(dim=1)
+
+    def filter_batch(self, batch_data: Any, mask: torch.Tensor) -> Any:
+        """
+        Apply mask to batch data to return a filtered batch.
+
+        Notes:
+            Override this method in subclasses to define a custom
+            filtering method for specific datasets.
+
+        Args:
+            batch_data (Any): A batch of data.
+            mask (torch.Tensor): A boolean mask.
+
+        Returns:
+            Any: A filtered batch.
+        """
+        return apply_to_tensor(batch_data, lambda x: x[mask])
+
+    def get_indices(self, recompute: bool = False) -> list[int]:
+        """
+        Return the Dataset indices of the samples that are difficult.
+
+        Args:
+            recompute (bool): Whether or not to recompute the indices.
+            Defaults to False.
+
+        Returns:
+            list[int]: A list of indices.
+        """
+        if self._indices and not recompute:
+            return self._indices
+
+        if not isinstance(self._dataloader.sampler, torch.utils.data.SequentialSampler):
+            raise ValueError(
+                "Dataloader must use SequentialSampler." "Set shuffle=False."
+            )
+        self.model.eval()
+        batch_masks = []
+        hard_count = 0
+
+        with torch.no_grad():
+            for batch_data in tqdm(self._dataloader, desc="Finding hard samples"):
+                scores = self.evaluate_batch(batch_data)
+                mask = scores.bool()
+                batch_masks.append(mask)
+                hard_count += mask.sum().item()
+                if self._min_samples is not None and hard_count >= self._min_samples:
+                    break
+
+        full_mask = torch.cat(batch_masks, dim=0)
+        self._indices = torch.nonzero(full_mask).flatten().tolist()
+
+        return self._indices
+
+    def __iter__(self) -> Iterator[Any]:
+        self.model.eval()
+        with torch.no_grad():
+            for batch_data in self._dataloader:
+                scores = self.evaluate_batch(batch_data)
+                mask = scores.bool()
+                if not mask.any():
+                    continue
+                yield self.filter_batch(batch_data, mask)

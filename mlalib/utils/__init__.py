@@ -8,6 +8,7 @@ from ._utils import (
     extract_tar,
     extract_zip,
     summary,
+    HardSamples,
 )
 from ._gdown import download_from_gdrive
 
@@ -23,4 +24,5 @@ ___all__ = [
     "show_images",
     "summary",
     "BaseNNTrainer",
+    "HardSamples",
 ]
