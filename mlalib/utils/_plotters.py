@@ -94,6 +94,7 @@ def show_images(
     labels: list[str] | None = None,
     title: str | None = None,
     cmap: str | None = None,
+    label_fontsize: float | None = None,
 ):
     """
     Display one or more tensor images.
@@ -110,6 +111,7 @@ def show_images(
         labels (list[str] or None): Optional title for each subplot.
         title (str or None): Optional figure title.
         cmap (str or None): Optional matplotlib colormap.
+        label_fontsize (float or None): Optional font size for labels. 
     """
 
     if isinstance(imgs, torch.Tensor):
@@ -148,7 +150,7 @@ def show_images(
         ax.set_yticks([])
 
         if labels is not None:
-            ax.set_title(labels[i])
+            ax.set_title(labels[i], fontsize=label_fontsize)
 
     for ax in axes[n_images:]:
         ax.axis("off")
