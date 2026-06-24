@@ -1,3 +1,9 @@
+"""
+This module is highly inspired by Andrej Karpathy's minBPE.
+"""
+
+
+
 import pickle
 from collections import Counter
 from pathlib import Path
@@ -68,7 +74,8 @@ class BPE:
         path: str | Path | None = None,
         vocab_size: int = 10000,
     ):
-        """Train BPE vocabulary and merges.
+        """
+        Train BPE vocabulary and merges.
 
         Args:
             text: (str): Optional text to train BPE on.
@@ -111,7 +118,8 @@ class BPE:
         )
 
     def encode(self, text: str) -> list[int]:
-        """Encode text to list of token IDs.
+        """
+        Encode text to list of token IDs.
 
         Args:
             text (str): Text to encode.
@@ -137,7 +145,8 @@ class BPE:
             return ids_with_specials
 
     def _encode_without_specials(self, text: str) -> list[int]:
-        """Encode text to list of token IDs without special token handling.
+        """
+        Encode text to list of token IDs without special token handling.
 
         Args:
             text (str): Text to encode.
@@ -167,7 +176,8 @@ class BPE:
         return token_ids
 
     def decode(self, token_ids: list[int]) -> str:
-        """Decode list of token IDs to text.
+        """
+        Decode list of token IDs to text.
 
         Args:
             token_ids (list[int]): List of token IDs to decode.
