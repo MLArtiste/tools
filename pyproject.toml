@@ -21,6 +21,7 @@ dependencies = [
   "requests",
   "torch",
   "torchmetrics",
+  "regex",
 ]
 
 [project.urls]
