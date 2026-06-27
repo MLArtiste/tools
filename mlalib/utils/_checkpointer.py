@@ -1,4 +1,5 @@
 import copy
+from typing import Any
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -16,9 +17,7 @@ class Checkpointer:
         optimizer (Optimizer): Optimizer.
         scaler (GradScaler): Gradient scaler.
         history (dict[str, list[float]]): Recorded loss and metric values per epoch.
-        es_counter (int): Early stopping counter.
         scheduler (LRScheduler or None): Optional learning rate scheduler. Defaults to None.
-        improved (bool): Whether the validation metric has improved. Defaults to False.
         device (str or torch.device): Device to use when loading checkpoint. Defaults to 'cpu'.
     """
 
@@ -28,14 +27,12 @@ class Checkpointer:
         optimizer: torch.optim.Optimizer,
         scaler: torch.GradScaler,
         history: dict[str, list[float]],
-        es_counter: int,
         scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
     ):
         self._model = model
         self._optimizer = optimizer
         self._scaler = scaler
         self._history = history
-        self._es_counter = es_counter
         self._scheduler = scheduler
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._future = None
@@ -50,10 +47,13 @@ class Checkpointer:
         """
         return apply_to_tensor(obj, lambda x: x.detach().cpu())
 
-    def checkpoint(self):
+    def checkpoint(self, extra: dict | None = None) -> dict[str, Any]:
         """
         Return a checkpoint dictionary.
 
+        Args:
+            extra (dict or None): Additional objects to merge into the
+            checkpoint dictionary.
         Return
             dict: Dictonary to checkpoint.
         """
@@ -62,13 +62,15 @@ class Checkpointer:
             "optimizer_state_dict": self._stage(self._optimizer.state_dict()),
             "scaler_state_dict": self._stage(self._scaler.state_dict()),
             "history": copy.deepcopy(self._history),
-            "es_counter": self._es_counter,
         }
 
         if self._scheduler is not None:
             checkpoint["scheduler_state_dict"] = self._stage(
                 self._scheduler.state_dict()
             )
+
+        if extra:
+            checkpoint.update(extra)
 
         return checkpoint
 
@@ -81,29 +83,33 @@ class Checkpointer:
         """
         return self._future is not None and not self._future.done()
 
-    def async_save(self, path: str | Path):
+    def async_save(self, path: str | Path, extra: dict | None = None):
         """
         Save checkpoint asynchronously.
 
         Args:
             path (str or Path): Path to save checkpoint.
+            extra (dict or None): Additional objects to merge into the
+            checkpoint at save time.
         """
         if self.is_busy():
             self.skipped = True
             return
         self.skipped = False
-        self._future = self._executor.submit(torch.save, self.checkpoint(), path)
+        self._future = self._executor.submit(torch.save, self.checkpoint(extra), path)
 
-    def sync_save(self, path: str | Path):
+    def sync_save(self, path: str | Path, extra: dict | None = None):
         """
         Save checkpoint synchronously.
 
         Args:
             path (str or Path): Path to save checkpoint.
+            extra (dict or None): Additional objects to merge into the
+            checkpoint at save time.
         """
         if self._future is not None:
             self._future.result()
-        torch.save(self.checkpoint(), path)
+        torch.save(self.checkpoint(extra), path)
 
     def shutdown(self):
         """

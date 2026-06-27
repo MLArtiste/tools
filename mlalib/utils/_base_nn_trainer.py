@@ -31,6 +31,8 @@ class BaseNNTrainer(ABC):
         device (torch.device, str or None): Optional device to use. Defaults to None.
         checkpoint_path (str, Path or None): Optional file path for checkpointing based on best metric value.
         Trainer will checkpoint only when provided. Defaults to None.
+        checkpoint_steps (int or None): Optional number of training steps between checkpoints
+        for very long training epochs. Defaults to None.
         checkpoint_metric (str): name of metric to monitor. Expects one of keys in trainer history.
         Defaults to 'val_loss'.
         minimize_metric (bool): Whether to minimize or maximize the metric.
@@ -54,6 +56,7 @@ class BaseNNTrainer(ABC):
         lrs_metric: str = "val_loss",
         device: torch.device | str | None = None,
         checkpoint_path: str | Path | None = None,
+        checkpoint_steps: int | None = None,
         checkpoint_metric: str = "val_loss",
         minimize_metric: bool = True,
         patience: int | None = None,
@@ -61,6 +64,14 @@ class BaseNNTrainer(ABC):
         grad_clip_val: float | None = None,
         grad_accum_steps: int = 1,
     ):
+        if checkpoint_steps is not None:
+            if checkpoint_steps < 1 or not isinstance(checkpoint_steps, int):
+                raise ValueError("checkpoint_steps must be a positive integer")
+            if checkpoint_path is None:
+                raise ValueError(
+                    "checkpoint_path must be provided when checkpoint_steps is not None"
+                )
+
         if grad_accum_steps < 1 or not isinstance(grad_accum_steps, int):
             raise ValueError("grad_accum_steps must be a positive integer")
 
@@ -87,7 +98,10 @@ class BaseNNTrainer(ABC):
         self._loss_fn = loss_fn
         self._scheduler = scheduler
         self._lrs_metric = lrs_metric.lower()
+        self._checkpoint_steps = checkpoint_steps
+        self._train_steps = 0
         self._checkpoint_path = checkpoint_path
+        self._checkpointer = None
         self._checkpoint_metric = checkpoint_metric.lower()
         self._minimize_metric = minimize_metric
         self._patience = patience
@@ -187,6 +201,16 @@ class BaseNNTrainer(ABC):
             return True
         return False
 
+    def _checkpoint_extra(self) -> dict[str, Any]:
+        """
+        Return additional objects to merge into the checkpoint at save time.
+        Useful for immutable objects like integers.
+
+        Returns:
+            dict[str, Any]: Additional objects to save.
+        """
+        return {"es_counter": self._es_counter, "train_steps": self._train_steps}
+
     def _checkpoint(
         self,
         improved: bool,
@@ -205,13 +229,19 @@ class BaseNNTrainer(ABC):
                     f"Saving best checkpoint at "
                     f"{self._checkpoint_metric} = {self._best_metric_val:.4f}"
                 )
-            self._checkpointer.sync_save(self._best_checkpoint_path)
+            self._checkpointer.sync_save(
+                self._best_checkpoint_path, extra=self._checkpoint_extra()
+            )
 
         if self.device.type == "cpu":
-            self._checkpointer.sync_save(self._checkpoint_path)
+            self._checkpointer.sync_save(
+                self._checkpoint_path, extra=self._checkpoint_extra()
+            )
 
         else:
-            self._checkpointer.async_save(self._checkpoint_path)
+            self._checkpointer.async_save(
+                self._checkpoint_path, extra=self._checkpoint_extra()
+            )
 
     def _load_checkpoint(self) -> int:
         """
@@ -236,9 +266,13 @@ class BaseNNTrainer(ABC):
             self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         self._history = checkpoint.get("history", self._history)
-        metric = self._history[self._checkpoint_metric]
-        self._best_metric_val = min(metric) if self._minimize_metric else max(metric)
+        if self._history is not None:
+            metric = self._history[self._checkpoint_metric]
+            self._best_metric_val = (
+                min(metric) if self._minimize_metric else max(metric)
+            )
         self._es_counter = checkpoint.get("es_counter", 0)
+        self._train_steps = checkpoint.get("train_steps", 0)
 
         if self._use_amp and "scaler_state_dict" in checkpoint:
             self._scaler.load_state_dict(checkpoint["scaler_state_dict"])
@@ -246,7 +280,7 @@ class BaseNNTrainer(ABC):
         if self._scheduler and "scheduler_state_dict" in checkpoint:
             self._scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
-        return checkpoint.get("epoch", len(self._history.get("train_loss", [])))
+        return len(self._history.get("train_loss", []))
 
     def _early_stopping(self, improved, verbose=True):
         """
@@ -338,6 +372,15 @@ class BaseNNTrainer(ABC):
                 self._scaler.update()
                 self._optimizer.zero_grad(set_to_none=True)
 
+                self._train_steps += 1
+                if (
+                    self._checkpoint_steps is not None
+                    and self._train_steps % self._checkpoint_steps == 0
+                ):
+                    self._checkpointer.async_save(
+                        self._checkpoint_path, extra=self._checkpoint_extra()
+                    )
+
             total_loss += batch_loss.item() * self._grad_accum_steps
             avg_loss = total_loss / (batch_idx + 1)
 
@@ -415,7 +458,6 @@ class BaseNNTrainer(ABC):
                 optimizer=self._optimizer,
                 scaler=self._scaler,
                 history=self._history,
-                es_counter=self._es_counter,
                 scheduler=self._scheduler,
             )
 
@@ -452,10 +494,14 @@ class BaseNNTrainer(ABC):
                             f"{self._checkpoint_metric} at {self._best_metric_val}."
                         )
                         if self._checkpoint_path and self._checkpointer.skipped:
-                            self._checkpointer.sync_save(self._checkpoint_path)
+                            self._checkpointer.sync_save(
+                                self._checkpoint_path, extra=self._checkpoint_extra()
+                            )
                         break
             if self._checkpoint_path and self._checkpointer.skipped:
-                self._checkpointer.sync_save(self._checkpoint_path)
+                self._checkpointer.sync_save(
+                    self._checkpoint_path, extra=self._checkpoint_extra()
+                )
 
         finally:
             if self._checkpointer is not None:
