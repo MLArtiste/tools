@@ -1,4 +1,6 @@
 import math
+import gzip
+import shutil
 import tarfile
 import zipfile
 from pathlib import Path
@@ -180,6 +182,49 @@ def extract_zip(
         print(f"Extraction complete")
 
     return extract_dir
+
+
+def extract_gzip(
+    gzip_path: str | Path,
+    root: str | Path | None = None,
+) -> Path:
+    """
+    Decompress a GZIP file.
+
+    Args:
+        gzip_path (str or Path): Path to the GZIP file.
+        root (str, Path or None): Optional output directory. Uses the parent
+        directory of the GZIP file if None. Defaults to None.
+
+    Returns:
+        Path: Path to the decompressed file.
+    """
+    gzip_path = Path(gzip_path)
+
+    if not gzip_path.exists():
+        raise FileNotFoundError(f"GZIP file not found: {gzip_path}")
+
+    if root is None:
+        output_dir = gzip_path.parent
+    else:
+        output_dir = Path(root)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = output_dir / gzip_path.with_suffix("").name
+
+    if output_file.exists():
+        return output_file
+
+    print(f"Extracting {gzip_path} to {output_file}")
+
+    with gzip.open(gzip_path, "rb") as src:
+        with output_file.open("wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+    print(f"Extraction complete")
+
+    return output_file
 
 
 def download_and_extract_tar(
