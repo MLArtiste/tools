@@ -109,6 +109,7 @@ class BaseNNTrainer(ABC):
         self._use_amp = use_amp
         self._grad_clip_val = grad_clip_val
         self._grad_accum_steps = grad_accum_steps
+        self._train_loader_state_dict = None
         self._history = {"train_loss": [], "val_loss": []}
         self._best_metric_val = float("inf") if self._minimize_metric else -float("inf")
         self._scaler = torch.amp.GradScaler(self.device.type, enabled=self._use_amp)
@@ -280,6 +281,9 @@ class BaseNNTrainer(ABC):
         if self._scheduler and "scheduler_state_dict" in checkpoint:
             self._scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
+        if "train_loader_state_dict" in checkpoint:
+            self._train_loader_state_dict = checkpoint["train_loader_state_dict"]
+
         return len(self._history.get("train_loss", []))
 
     def _early_stopping(self, improved, verbose=True):
@@ -346,14 +350,22 @@ class BaseNNTrainer(ABC):
         total_loss = 0
         num_batches = len(train_dataloader)
         leave = verbose or (epoch + 1 == epochs)
+        initial_batch = 0
+
+        if self._train_loader_state_dict is not None:
+            snapshot = self._train_loader_state_dict.get("_snapshot", {})
+            initial_batch = snapshot.get("_snapshot_step", 0)
+            self._train_loader_state_dict = None
+
         pbar = tqdm(
             train_dataloader,
             total=num_batches,
             desc=f"Epoch {epoch + 1}/{epochs}",
             leave=leave,
+            initial=initial_batch,
         )
 
-        for batch_idx, batch_data in enumerate(pbar):
+        for batch_idx, batch_data in enumerate(pbar, start=initial_batch):
             with torch.autocast(self.device.type, enabled=self._use_amp):
                 batch_output = self.forward_step(batch_data)
                 batch_loss = self._loss_fn(*batch_output) / self._grad_accum_steps
@@ -377,9 +389,11 @@ class BaseNNTrainer(ABC):
                     self._checkpoint_steps is not None
                     and self._train_steps % self._checkpoint_steps == 0
                 ):
-                    self._checkpointer.async_save(
-                        self._checkpoint_path, extra=self._checkpoint_extra()
-                    )
+                    extra = self._checkpoint_extra()
+                    if hasattr(train_dataloader, "state_dict"):
+                        extra["train_loader_state_dict"] = train_dataloader.state_dict()
+
+                    self._checkpointer.async_save(self._checkpoint_path, extra=extra)
 
             total_loss += batch_loss.item() * self._grad_accum_steps
             avg_loss = total_loss / (batch_idx + 1)
@@ -471,6 +485,11 @@ class BaseNNTrainer(ABC):
                 return
             if verbose:
                 print(f"Resuming training from Epoch {start_epoch+1}/{epochs}.")
+
+            if self._train_loader_state_dict is not None and hasattr(
+                train_dataloader, "load_state_dict"
+            ):
+                train_dataloader.load_state_dict(self._train_loader_state_dict)
 
         try:
             for epoch in range(start_epoch, epochs):
