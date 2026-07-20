@@ -1,5 +1,5 @@
 import warnings
-from typing import Any
+from typing import Any, Literal
 from pathlib import Path
 from abc import ABC, abstractmethod
 
@@ -27,6 +27,8 @@ class BaseNNTrainer(ABC):
         loss_fn (nn.Module): Loss function to minimize during training.
         metrics (dict[str, Metric] or None): Optional dictionary of metrics to track. Defaults to None.
         scheduler (LRScheduler or None): Optional learning rate scheduler. Defaults to None.
+        scheduler_interval ('batch' or 'epoch'): Whether to update scheduler based on effective batches
+        or epochs. Defaults to 'epoch'.
         lrs_metric (str): Metric name to monitor for ReduceLROnPlateau. Defaults to 'val_loss'.
         device (torch.device, str or None): Optional device to use. Defaults to None.
         checkpoint_path (str, Path or None): Optional file path for checkpointing based on best metric value.
@@ -53,6 +55,7 @@ class BaseNNTrainer(ABC):
         loss_fn: nn.Module,
         metrics: dict[str, Metric] | None = None,
         scheduler: LRScheduler | None = None,
+        scheduler_interval: Literal["batch", "epoch"] = "epoch",
         lrs_metric: str = "val_loss",
         device: torch.device | str | None = None,
         checkpoint_path: str | Path | None = None,
@@ -64,6 +67,9 @@ class BaseNNTrainer(ABC):
         grad_clip_val: float | None = None,
         grad_accum_steps: int = 1,
     ):
+        if scheduler_interval not in ("batch", "epoch"):
+            raise ValueError("scheduler_interval must be either 'batch' or 'epoch'")
+
         if checkpoint_steps is not None:
             if checkpoint_steps < 1 or not isinstance(checkpoint_steps, int):
                 raise ValueError("checkpoint_steps must be a positive integer")
@@ -97,6 +103,7 @@ class BaseNNTrainer(ABC):
         self._optimizer = optimizer
         self._loss_fn = loss_fn
         self._scheduler = scheduler
+        self._scheduler_interval = scheduler_interval
         self._lrs_metric = lrs_metric.lower()
         self._checkpoint_steps = checkpoint_steps
         self._train_steps = 0
@@ -141,6 +148,11 @@ class BaseNNTrainer(ABC):
                 raise ValueError(
                     f"""invalid learning rate scheduler metric '{self._lrs_metric}'. 
                     Expected one of {list(self._history.keys())}"""
+                )
+            if self._scheduler_interval == "batch":
+                raise ValueError(
+                    "scheduler_interval='batch' is not supported with ReduceLROnPlateau "
+                    "use scheduler_interval='epoch' instead"
                 )
 
     def _update_metrics(self, *args: Any) -> None:
@@ -348,9 +360,13 @@ class BaseNNTrainer(ABC):
         """
         self.model.train()
         total_loss = 0
-        num_batches = len(train_dataloader)
         leave = verbose or (epoch + 1 == epochs)
         initial_batch = 0
+
+        try:
+            num_batches = len(train_dataloader)
+        except:
+            num_batches = None
 
         if self._train_loader_state_dict is not None:
             snapshot = self._train_loader_state_dict.get("_snapshot", {})
@@ -384,6 +400,9 @@ class BaseNNTrainer(ABC):
                 self._scaler.update()
                 self._optimizer.zero_grad(set_to_none=True)
 
+                if self._scheduler is not None and self._scheduler_interval == "batch":
+                    self._scheduler_step()
+
                 self._train_steps += 1
                 if (
                     self._checkpoint_steps is not None
@@ -404,6 +423,9 @@ class BaseNNTrainer(ABC):
             current_metrics = self._compute_metrics()
             formatted_metrics = {k: f"{v:.4f}" for k, v in current_metrics.items()}
             pbar.set_postfix(loss=f"{avg_loss:.4f}", **formatted_metrics)
+
+        if num_batches is None:
+            self._optimizer.zero_grad(set_to_none=True)
 
         self._history["train_loss"].append(avg_loss)
         for name, value in current_metrics.items():
@@ -426,8 +448,13 @@ class BaseNNTrainer(ABC):
 
         self.model.eval()
         total_loss = 0
-        num_batches = len(val_dataloader)
         leave = verbose or (epoch + 1 == epochs)
+
+        try:
+            num_batches = len(val_dataloader)
+        except:
+            num_batches = None
+
         pbar = tqdm(val_dataloader, total=num_batches, desc="Validating", leave=leave)
 
         with torch.no_grad():
@@ -498,7 +525,7 @@ class BaseNNTrainer(ABC):
                 if val_dataloader is not None:
                     self._validation_loop(val_dataloader, epoch, epochs, verbose)
 
-                if self._scheduler:
+                if self._scheduler is not None and self._scheduler_interval == "epoch":
                     self._scheduler_step()
 
                 improved = self._check_improvement()
