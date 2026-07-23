@@ -2,8 +2,6 @@
 This module is highly inspired by Andrej Karpathy's minBPE.
 """
 
-
-
 import pickle
 from collections import Counter
 from pathlib import Path
@@ -107,8 +105,14 @@ class BPE:
             for chunk_ids in token_ids:
                 bigrams = ngrams_iterator(chunk_ids, n=2)
                 counter.update(bigrams)
+
+            if not counter:
+                print(
+                    f"Stopped at a vocab size of {len(self.vocab):,}. No more pairs to merge."
+                )
+                break
             pair = counter.most_common(1)[0][0]
-            idx = 256 + i
+            idx = len(self.vocab)
             token_ids = [self._merge(chunk_ids, pair, idx) for chunk_ids in token_ids]
             self.merges[pair] = idx
             self.vocab[idx] = self.vocab[pair[0]] + self.vocab[pair[1]]
