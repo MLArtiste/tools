@@ -279,11 +279,13 @@ class BaseNNTrainer(ABC):
             self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         self._history = checkpoint.get("history", self._history)
-        if self._history is not None:
-            metric = self._history[self._checkpoint_metric]
+        
+        metric = self._history[self._checkpoint_metric]
+        if metric:
             self._best_metric_val = (
                 min(metric) if self._minimize_metric else max(metric)
             )
+
         self._es_counter = checkpoint.get("es_counter", 0)
         self._train_steps = checkpoint.get("train_steps", 0)
 
@@ -493,15 +495,6 @@ class BaseNNTrainer(ABC):
             verbose (bool): Whether to show full training details. Defaults to True.
             resume (bool): Whether to resume training with information from checkpoint_path. Defaults to False.
         """
-        if self._checkpoint_path is not None:
-            self._checkpointer = Checkpointer(
-                model=self.model,
-                optimizer=self._optimizer,
-                scaler=self._scaler,
-                history=self._history,
-                scheduler=self._scheduler,
-            )
-
         start_epoch = 0
         if resume:
             start_epoch = self._load_checkpoint()
@@ -517,6 +510,15 @@ class BaseNNTrainer(ABC):
                 train_dataloader, "load_state_dict"
             ):
                 train_dataloader.load_state_dict(self._train_loader_state_dict)
+
+        if self._checkpoint_path is not None:
+            self._checkpointer = Checkpointer(
+                model=self.model,
+                optimizer=self._optimizer,
+                scaler=self._scaler,
+                history=self._history,
+                scheduler=self._scheduler,
+            )
 
         try:
             for epoch in range(start_epoch, epochs):
