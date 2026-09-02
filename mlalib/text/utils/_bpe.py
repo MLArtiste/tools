@@ -80,15 +80,15 @@ class BPE:
             path: (str or Path): Optional path to text file to train BPE on.
             vocab_size: (int): Size of vocabulary. Defaults to 10000.
         """
+        if vocab_size < 256:
+            raise ValueError("'vocab_size' must be at least 256")
+
         if text is not None and path is not None:
             raise ValueError("either 'text' or 'path' must be provided, but not both")
 
         if path is not None:
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read()
-
-        if vocab_size < 256:
-            raise ValueError("'vocab_size' must be at least 256")
 
         num_merges = vocab_size - 256
         self.merges = {}
