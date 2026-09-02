@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Sequence
 
 from ._vocab import Vocab
 
@@ -49,11 +49,11 @@ def build_vocab_from_iterator(
 
 
 def ngrams_iterator(
-    tokens: list[Any], n: int, only_n: bool = True, transform: Callable = tuple
+    tokens: Sequence, n: int, only_n: bool = True, transform: Callable = tuple
 ) -> Iterator[Any]:
     """
     Args:
-        tokens (list[str]): List of tokens.
+        tokens (Sequence): A sequence of tokens.
         n (int): N-gram size.
         only_n (bool): Whether to only return n-grams of size n instead of all n-grams up to n.
         Defaults to True.
