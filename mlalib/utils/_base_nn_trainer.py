@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 from pathlib import Path
 from abc import ABC, abstractmethod
 
@@ -24,7 +24,7 @@ class BaseNNTrainer(ABC):
     Args:
         model (nn.Module): Neural network to train.
         optimizer (Optimizer): Optimization algorithm for parameter updates.
-        loss_fn (nn.Module): Loss function to minimize during training.
+        loss_fn (Callable or nn.Module): Loss function to minimize during training.
         metrics (dict[str, Metric] or None): Optional dictionary of metrics to track. Defaults to None.
         scheduler (LRScheduler or None): Optional learning rate scheduler. Defaults to None.
         scheduler_interval ('batch' or 'epoch'): Whether to update scheduler based on effective batches
@@ -52,7 +52,7 @@ class BaseNNTrainer(ABC):
         self,
         model: nn.Module,
         optimizer: Optimizer,
-        loss_fn: nn.Module,
+        loss_fn: Callable | nn.Module,
         metrics: dict[str, Metric] | None = None,
         scheduler: LRScheduler | None = None,
         scheduler_interval: Literal["batch", "epoch"] = "epoch",
