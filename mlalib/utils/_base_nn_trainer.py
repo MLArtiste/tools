@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import LRScheduler
 
 
 from ._checkpointer import Checkpointer
+from ._utils import apply_to_tensor
 
 
 class BaseNNTrainer(ABC):
@@ -162,6 +163,11 @@ class BaseNNTrainer(ABC):
         Args:
             *args (Any): Values returned from forward_step.
         """
+        upcast_half = lambda t: (
+            t.float() if t.dtype in (torch.float16, torch.bfloat16) else t
+        )
+        args = apply_to_tensor(args, upcast_half)
+
         for metric in self._metrics.values():
             metric.update(*args)
 
@@ -279,7 +285,7 @@ class BaseNNTrainer(ABC):
             self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         self._history = checkpoint.get("history", self._history)
-        
+
         metric = self._history[self._checkpoint_metric]
         if metric:
             self._best_metric_val = (
