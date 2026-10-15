@@ -20,6 +20,8 @@ from ._classification import (
 )
 from ._language_modeling import PennTreebank, TimeMachine, WikiText2, WikiText103
 
+from ._machine_translation import WMT14EnFr
+
 __all__ = [
     "AG_News",
     "AmazonReviewFull",
@@ -37,6 +39,7 @@ __all__ = [
     "SST2",
     "STSB",
     "TimeMachine",
+    "WMT14EnFr",
     "WikiText103",
     "WikiText2",
     "WNLI",
