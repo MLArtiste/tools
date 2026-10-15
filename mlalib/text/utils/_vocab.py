@@ -12,12 +12,15 @@ class Vocab:
     Args:
         token_to_idx (dict[str, int] or None): Dictionary mapping tokens to indices.
         idx_to_token (dict[int, str] or None): Dictionary mapping indices to tokens.
+        unk_token (str or None): Token to use for unknown tokens. if None, defaults to 
+        "<unk>" or "<UNK>" if present in the vocabulary.
     """
 
     def __init__(
         self,
         token_to_idx: dict[str, int] | None = None,
         idx_to_token: dict[int, str] | None = None,
+        unk_token: str | None = None,
     ):
         if token_to_idx is not None and not isinstance(token_to_idx, dict):
             raise ValueError("token_to_idx must be a dictionary")
@@ -52,10 +55,16 @@ class Vocab:
             self._idx_to_token = idx_to_token.copy()
             self._token_to_idx = {v: k for k, v in self._idx_to_token.items()}
 
-        self.pad = self._token_to_idx.get("<pad>")
-        self.unk = self._token_to_idx.get("<unk>")
-        self.bos = self._token_to_idx.get("<bos>")
-        self.eos = self._token_to_idx.get("<eos>")
+        if unk_token is not None:
+            if unk_token not in self._token_to_idx:
+                raise ValueError(f"unknown token {unk_token!r} not found in vocabulary")
+            self.unk = self._token_to_idx[unk_token]
+        else:
+            self.unk = self._token_to_idx.get("<unk>", self._token_to_idx.get("<UNK>"))
+
+        self.pad = self._token_to_idx.get("<pad>", self._token_to_idx.get("<PAD>"))
+        self.bos = self._token_to_idx.get("<bos>", self._token_to_idx.get("<BOS>"))
+        self.eos = self._token_to_idx.get("<eos>", self._token_to_idx.get("<EOS>"))
 
     @classmethod
     def from_counter(
