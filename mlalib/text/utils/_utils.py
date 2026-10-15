@@ -1,15 +1,15 @@
 from collections import Counter
-from typing import Any, Callable, Iterator, Sequence
+from typing import Any, Callable, Iterable, Iterator, Sequence
 
 from ._vocab import Vocab
 
 
-def build_counter_from_iterator(iterator: Iterator[str]) -> Counter[str]:
+def build_counter_from_iterator(iterator: Iterable[list[str]]) -> Counter[str]:
     """
     Build a counter from an iterator of tokens.
 
     Args:
-        iterator (Iterator[str]): An iterator of tokens.
+        iterator (Iterable[list[str]]): An iterator of tokens.
 
     Returns:
         Counter[str]: A counter of tokens.
@@ -22,7 +22,7 @@ def build_counter_from_iterator(iterator: Iterator[str]) -> Counter[str]:
 
 
 def build_vocab_from_iterator(
-    iterator: Iterator[str],
+    iterator: Iterable[list[str]],
     min_freq: int = 1,
     specials: list[str] | None = None,
     special_first: bool = True,
@@ -31,7 +31,7 @@ def build_vocab_from_iterator(
     Build a vocab from an iterator of tokens.
 
     Args:
-        iterator (Iterator[str]): An iterator of tokens.
+        iterator (Iterable[list[str]]): An iterator of tokens.
         min_freq (int): Minimum frequency for tokens to be included. Defaults to 1.
         specials (list[str] or None): List of special tokens to include.
         special_first (bool): Whether to place special tokens at the beginning. Defaults to True.
