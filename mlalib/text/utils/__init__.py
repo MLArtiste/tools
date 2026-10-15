@@ -4,12 +4,13 @@ from ._utils import (
     ngrams_iterator,
 )
 from ._vocab import Vocab
-from ._tokenizer import CharTokenizer, Tokenizer, WordTokenizer
+from ._tokenizer import CharTokenizer, RegexTokenizer, Tokenizer, WordTokenizer
 from ._bpe import BPE
 
 __all__ = [
     "BPE",
     "CharTokenizer",
+    "RegexTokenizer",
     "Tokenizer",
     "Vocab",
     "WordTokenizer",

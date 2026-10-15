@@ -71,3 +71,28 @@ class WordTokenizer(Tokenizer):
             list[str]: List of words.
         """
         return self.token_regex.findall(text)
+
+
+class RegexTokenizer(Tokenizer):
+    """
+    Regex-based tokenizer.
+
+    Args:
+        pattern (str): Regex pattern.
+        flags (int): Regex flags.
+    """
+
+    def __init__(self, pattern: str, flags: int = 0):
+        self.token_regex = regex.compile(pattern, flags)
+
+    def tokenize(self, text: str) -> list[str]:
+        """
+        Split string into tokens.
+
+        Args:
+            text (str): Input string.
+
+        Returns:
+            list[str]: List of tokens.
+        """
+        return self.token_regex.findall(text)
