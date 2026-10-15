@@ -1,4 +1,4 @@
-import re
+import regex
 from abc import ABC, abstractmethod
 
 
@@ -54,11 +54,11 @@ class WordTokenizer(Tokenizer):
 
     def __init__(self, keep_punctuation: bool = True):
         if keep_punctuation:
-            pattern = "[A-Za-z]+|\\d+|[{-~\\[-`:-@!-\\/]"
+            pattern = r"\p{L}+|\d+|[^\w\s]"
         else:
-            pattern = "[A-Za-z]+|\\d+"
+            pattern = r"\p{L}+|\d+"
 
-        self.token_regex = re.compile(pattern)
+        self.token_regex = regex.compile(pattern)
 
     def tokenize(self, text: str) -> list[str]:
         """
