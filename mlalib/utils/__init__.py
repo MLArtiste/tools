@@ -12,6 +12,7 @@ from ._utils import (
     HardSamples,
 )
 from ._gdown import download_from_gdrive
+from ._ext_utils import ExtBatchedShuffler, ExtSort
 
 __all__ = [
     "apply_to_tensor",
@@ -26,5 +27,7 @@ __all__ = [
     "show_images",
     "summary",
     "BaseNNTrainer",
+    "ExtBatchedShuffler",
+    "ExtSort",
     "HardSamples",
 ]
