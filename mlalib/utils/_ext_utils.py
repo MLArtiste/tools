@@ -90,8 +90,10 @@ class ExtBatchedShuffler(ABC):
 
     Args:
         batch_size (int): Number of records per batch.
+        Defaults to 8192.
         chunk_size (int): Maximum number of records to process in memory
-        at once. Must be divisible by batch_size.
+        at once. Must be divisible by and greater than batch_size.
+        Defaults to 499712.
         drop_last (bool): Whether to drop the last incomplete batch.
         seed (int or None): Optional random seed for shuffling.
     """
@@ -106,8 +108,8 @@ class ExtBatchedShuffler(ABC):
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
-        if chunk_size <= 0:
-            raise ValueError("chunk_size must be positive")
+        if chunk_size <= 0 or chunk_size < batch_size:
+            raise ValueError("chunk_size must be positive and greater than batch_size")
 
         if chunk_size % batch_size != 0:
             raise ValueError("chunk_size must be divisible by batch_size")
