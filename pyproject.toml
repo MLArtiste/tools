@@ -14,14 +14,15 @@ authors = [
 ]
 dependencies = [
   "beautifulsoup4",
+  "matplotlib",
   "numpy",
   "pandas",
-  "matplotlib",
-  "tqdm",
+  "pyarrow",
+  "regex",
   "requests",
   "torch",
   "torchmetrics",
-  "regex",
+  "tqdm",
 ]
 
 [project.urls]
